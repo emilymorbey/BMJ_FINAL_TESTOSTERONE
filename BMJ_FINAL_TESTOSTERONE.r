@@ -29,7 +29,7 @@ library(MendelianRandomization)
 
 setwd("C:/Users/emorb/OneDrive - University of Cambridge/PhD/MR/Testosterone_CAD_MR/Testosterone CAD MR R files")
 
-M_T_proxies_output <- read_excel("TestosteroneCAD/not found inputs/SNPs_M_Testosterone_AND_CAD.xlsx", sheet = "FREE T E&O")
+M_T_proxies_output <- read_excel("TestosteroneCAD/not found inputs/SNPs_M_Testosterone_AND_CAD.xlsx", sheet = "FREETE&O")
 
 ### selecting appropriate columns for harmonisation 
 
@@ -258,7 +258,7 @@ library(MendelianRandomization)
 ##################################################################################
 
 # looking at the allele matching and frequencies etc.
-F_T_proxies_output <- read_excel("not found inputs/SNPs_F_Testosterone_AND_CAD.xlsx", sheet = "T&P E&O")
+F_T_proxies_output <- read_excel("TestosteroneCAD/not found inputs/SNPs_F_Testosterone_AND_CAD.xlsx", sheet = "T&P E&O")
 
 
 
