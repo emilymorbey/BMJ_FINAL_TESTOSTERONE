@@ -29,7 +29,7 @@ library(MendelianRandomization)
 
 setwd("C:/Users/emorb/OneDrive - University of Cambridge/PhD/MR/Testosterone_CAD_MR/Testosterone CAD MR R files")
 
-M_T_proxies_output <- read_excel("TestosteroneCAD/not found inputs/SNPs_M_Testosterone_AND_CAD.xlsx", sheet = "FREETE&O")
+M_T_proxies_output <- read_excel("TestosteroneCAD/not found inputs/SNPs_M_Testosterone_AND_CAD.xlsx", sheet = "FREE T E&O")
 
 ### selecting appropriate columns for harmonisation 
 
@@ -167,6 +167,23 @@ mr_funnel(MRObject)
 mr_funnel(MRObject) + ggtitle("Funnel plot for male testosterone and CAD")
 
 
+
+############## MR PRESSO ###############
+
+library(devtools)
+
+
+devtools::install_github("rondolab/MR-PRESSO", force = TRUE)
+library(MRPRESSO)
+
+# run the M_TESTSOTERONE_CAD script before running this 
+
+allele_matching <- as.data.frame(allele_matching)
+
+mr_presso(BetaOutcome = "male_beta_CAD", BetaExposure = "BETA_T", SdOutcome = "male_se_CAD", SdExposure = "SE_T", OUTLIERtest = TRUE, DISTORTIONtest = TRUE, data = allele_matching, NbDistribution = 3000,  SignifThreshold = 0.05)
+
+print(allele_matching)
+write.csv(allele_matching$SNP_T, "SNP_T.csv", row.names = TRUE)
 ################ RUNNING WITHOUT OUTLIER ############################
 
 
@@ -356,7 +373,7 @@ mr_loo(MRObject)
 mr_funnel(MRObject)
 
 
-
+print(MRObject)
 
 
 #####################################    3. Mendelian Randomisation of SHBG to Cardiovascular Disease risk in Men            ########################################
@@ -2552,74 +2569,12 @@ decile_stratified$X <- factor(decile_stratified$X,
 
 print(decile_stratified)
 
-
-# Create the forest plot without a legend
-plot <- ggplot(decile_stratified, aes(x = X, y = exp_coef, ymin = exp_coef_lower_95, ymax = exp_coef_upper_95)) +
-  geom_point(position = position_dodge(width = 0.3), size = 5) +
-  geom_errorbar(position = position_dodge(width = 1.2), width = 0.4) +
-  labs(x = "Testosterone Deciles (nmol/L)",
-       y = "CAD Hazard Ratio") +
-  theme_minimal() +
-  theme(axis.text.y = element_text(size = 25),
-        axis.text.x = element_text(size = 20),
-        axis.title.x = element_text(size=24),
-        axis.title.y = element_text(size = 24)) +
-  geom_hline(yintercept = 1, linetype = "dashed", color = "black") +  # Add a line at HR = 1 (null effect)
-  theme(panel.grid.major.x = element_blank(),
-        panel.grid.minor.x = element_blank(),
-        axis.text.x = element_text(angle = 45, hjust = 1)) +
-  
-  
-  
-  print(plot)
-
-
 library(ggplot2)
 
-plot <- ggplot(decile_stratified, aes(x = X, y = exp_coef, ymin = exp_coef_lower_95, ymax = exp_coef_upper_95)) +
-  geom_point(position = position_dodge(width = 0.5), size = 4, color = "blue") +
-  geom_errorbar(position = position_dodge(width = 0.5), width = 0.3, color = "blue") +
-  labs(x = "Testosterone Deciles (nmol/L)",
-       y = "Hazard Ratio of CAD") +
-  theme_minimal(base_size = 15) +  # Base font size for better readability
-  theme(axis.text.y = element_text(size = 14),
-        axis.text.x = element_text(size = 14, angle = 45, hjust = 1),
-        axis.title.x = element_text(size = 16),
-        axis.title.y = element_text(size = 16),
-        panel.grid.major = element_line(linewidth = 0.5, color = "grey90"),  # Use linewidth instead of size
-        panel.grid.minor = element_blank(),  # Remove minor grid lines
-        panel.border = element_rect(color = "black", fill = NA, linewidth = 0.5)) +  # Use linewidth instead of size
-  geom_hline(yintercept = 1, linetype = "dashed", color = "black", linewidth = 0.8)  # Use linewidth instead of size
-
-print(plot)
-
-
-
-plot <- ggplot(decile_stratified, aes(x = X, y = exp_coef, ymin = exp_coef_lower_95, ymax = exp_coef_upper_95, color = X)) +
-  geom_point(position = position_dodge(width = 0.3), size = 5) +
-  geom_errorbar(position = position_dodge(width = 1.2), width = 0.4) +
-  labs(x = "Testosterone Deciles (nmol/L)",
-       y = "CAD Hazard Ratio") +
-  theme_minimal() +
-  theme(axis.text.y = element_text(size = 25),
-        axis.text.x = element_text(size = 20),
-        axis.title.x = element_text(size = 24),
-        axis.title.y = element_text(size = 24)) +
-  geom_hline(yintercept = 1, linetype = "dashed", color = "black") +  # Add a line at HR = 1 (null effect)
-  theme(panel.grid.major.x = element_blank(),
-        panel.grid.minor.x = element_blank(),
-        axis.text.x = element_text(angle = 45, hjust = 1)) +
-  scale_color_viridis_d() # Example using viridis color scale
-
-print(plot)
-
-
-library(ggplot2)
-library(viridis)  # For the viridis color scale
 
 plot <- ggplot(decile_stratified, aes(x = X, y = exp_coef, ymin = exp_coef_lower_95, ymax = exp_coef_upper_95)) +
   # Add colored points
-  geom_point(aes(color = X), position = position_dodge(width = 0.3), size = 4) +
+  geom_point(aes(color = X), position = position_dodge(width = 0.3), size = 4, color="royalblue") +
   # Add black error bars
   geom_errorbar(color = "black", position = position_dodge(width = 1.2), width = 0.4) +
   labs(x = "Testosterone Deciles (nmol/L)",
