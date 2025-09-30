@@ -7,7 +7,7 @@
 ### 3. Mendelian Randomisation of SHBG to Cardiovascular Disease Risk in Men
 ### 4. Mendelian Randomisation of SHBG to Cardiovascular Disease Risk in Women
 ### 5. MR-PRESSO analysis of Testosterone to Cardiovascular Disease Risk
-### 6. Mendelian Randomisation of Testosterone to Potential Mediators (SBP, DBP, HDL-c, LDL-c, Triglycerides)
+### 6. MULTIVARIABLE MR FOR DISCOVERY OF POTENTIAL MEDIATORS OF TESTOSTERONE CAD RELATIONSHIP
 ### 7. Phenotyping and Survival Analysis of Testosterone in UK Biobank 
 
 
@@ -653,615 +653,917 @@ mr_presso(BetaOutcome = "HARM_MALE_BETA_CAD", BetaExposure = "ABS_BETA_T", SdOut
 
 
 
+################################### 6. MULTIVARIABLE MR FOR DISCOVERY OF POTENTIAL MEDIATORS OF TESTOSTERONE CAD RELATIONSHIP #############################################
 
 
+#### MULTIVARIABLE MR ####
 
-#####################################    6.  Mendelian Randomisation of Testosterone to Potential Mediators (SBP, DBP, HDL-c, LDL-c, Triglycerides)  ################
 
-#### SBP ############################################################################################################################################################
-
+library(data.table)
 library(tidyverse)
-library(readxl)
+library(dplyr)
 library(MendelianRandomization)
+library(ggplot2)
 
-##################################################################################
 
-# HARMONISATION AND MR
+## reading in reference file to get the chrpos info for the testosterone snps 
 
-##################################################################################
+ref <- fread("/rfs/project/rfs-mpB3sSsgAn4/Studies/People/Katherine/sandbox/apps/funcanno_v1.0/ukb_mfi_AllChr_v3.txt")
+ref <- ref %>% 
+  rename(CHR=V1,
+         POS=V2,
+         ALLELE0=V3,
+         ALLELE1=V4,
+         ID=V5)
 
-# looking at the allele matching and frequencies etc.
-M_T_proxies_output <- read_excel("not found inputs/SNPs_M_Testosterone_AND_SBP.xlsx", sheet = "T&P E&O")
-M_T_proxies_output <- M_T_proxies_output[-1,]
 
 
-allele_matching <- select(M_T_proxies_output, "CHR", "BP", "SNP.x", "Target", "ALLELE1", "ALLELE0", "A1FREQ", "BETA", "SE", "Allele1", "Allele2", "Freq1", "Effect", "StdError" )
-allele_matching[allele_matching$Target == "rs56196860", ]
-M_T_proxies_output[M_T_proxies_output$Target == "rs56196860", ]
 
-# renaming the columns for ease of use 
-allele_matching <- allele_matching %>%
-  rename(
-    SNP_T = "SNP.x",
-    Target = "Target",
-    other_allele_T = "ALLELE1",
-    reference_allele_T = "ALLELE0",
-    A1FREQ_T = "A1FREQ",
-    BETA_T = "BETA",
-    SE_T = "SE",
-    reference_allele_DBP = "Allele2",
-    other_allele_DBP = "Allele1",
-    eaf_DBP = "Freq1",
-    beta_DBP = "Effect",
-    se_DBP = "StdError"
-  )
 
-# Removing SNP that was pleiOtropic in CAD MR 
+### reading in the testosterone SNPs to try and match them and pull out their chrpos info
 
-allele_matching <- allele_matching[!allele_matching$Target == "rs56196860", ]
-M_T_proxies_output <- M_T_proxies_output[!M_T_proxies_output$Target == "rs56196860", ]
+testosterone_cluster_snps <- fread("/rfs/project/rfs-mpB3sSsgAn4/Studies/People/Emily/Testosterone_CAD_MR/Multivariable_MR/M_Testosterone_signals.tsv")
+testosterone_cluster_snps <- testosterone_cluster_snps %>% 
+  rename(ID=Signal)
 
-# identify trait increasing allele for SHBG
 
-allele_matching$T_inc_allele <- if_else(allele_matching$BETA_T<0, allele_matching$reference_allele_T, 
-                                        allele_matching$other_allele_T)
 
-allele_matching$BETA_T <- as.numeric(allele_matching$BETA_T)
-allele_matching$ABS_BETA_T <- abs(allele_matching$BETA_T)
+### merge them with the reference set 
 
-# harmonising so the effect alleles for CAD and SHBG are the same
-# changing the betas here 
+merged <- left_join(testosterone_cluster_snps, ref, by="ID")
 
-allele_matching$beta_DBP <- as.numeric(allele_matching$beta_DBP)
 
-# CAPITALISE ALL THE ALLELE VALUES FOR DBP
 
-allele_matching$other_allele_DBP <- toupper(allele_matching$other_allele_DBP)
-allele_matching$reference_allele_DBP <- toupper(allele_matching$reference_allele_DBP)
+### they all matched except the ones on the x chromosome 
 
-allele_matching$HARM_BETA_DBP <- if_else(allele_matching$T_inc_allele!=allele_matching$other_allele_DBP,
-                                         allele_matching$beta_DBP*-1, allele_matching$beta_DBP)
+### reading in the whole file and checking the allele info 
 
+testosterone_cluster <- fread("/rfs/project/rfs-mpB3sSsgAn4/Studies/People/Emily/Testosterone_CAD_MR/Multivariable_MR/M_Testosterone_cluster.tsv")
 
+testosterone_cluster <- testosterone_cluster %>% 
+  rename(ID=Signal)
 
+merged_2 <- left_join(testosterone_cluster, merged, by="ID")
+merged_2 <- merged_2 %>% 
+  select(ID, Trait_raising, Other_allele, Weight, SE_weight, CHR, POS,ALLELE0, ALLELE1)
 
-plot(allele_matching$ABS_BETA_T, allele_matching$HARM_BETA_DBP)
+merged_2 <- merged_2 %>% 
+  mutate(CHRPOS=paste0(CHR,":",POS))
 
 
-M_T_proxies_output$StdError <- as.numeric(M_T_proxies_output$StdError)
-IVW_weights <- M_T_proxies_output$StdError^-2 
-inverse_weighted_LR <- lm(allele_matching$HARM_BETA_DBP ~ allele_matching$ABS_BETA_T- 1 ,weights=IVW_weights)
-summary(inverse_weighted_LR)
-abline(inverse_weighted_LR, col="red")
-summary_model <- summary(inverse_weighted_LR)
-summary_model
+write_tsv(merged_2, "/rfs/project/rfs-mpB3sSsgAn4/Studies/People/Emily/Testosterone_CAD_MR/Multivariable_MR/testosterone_cluster_with_chrpos.tsv")
 
+### added in the chrpos info for the x chromosome snps 
 
+testosterone_cluster <- fread("/rfs/project/rfs-mpB3sSsgAn4/Studies/People/Emily/Testosterone_CAD_MR/Multivariable_MR/testosterone_cluster_with_chrpos.tsv")
 
-allele_matching$ABS_BETA_T <- as.numeric(allele_matching$ABS_BETA_T)
-allele_matching$se_DBP <- as.numeric(allele_matching$se_DBP)
-allele_matching$SE_T <- as.numeric(allele_matching$SE_T)
+testosterone_cluster <- testosterone_cluster %>% 
+  select(ID, Trait_raising, Other_allele, Weight, SE_weight, CHR, POS)
 
 
+### need to pull out the weights from the freeT gwas instead 
 
-MRObject = mr_input(bx = allele_matching$ABS_BETA_T, bxse = allele_matching$SE_T, 
-                    by = allele_matching$HARM_BETA_DBP, byse = allele_matching$se_DBP, snps = allele_matching$SNP_T)
+freet <- fread("/rfs/project/rfs-mpB3sSsgAn4/Studies/People/Emily/GWAS_outputs/FreeT_Male_AllChrs.txt")
 
-mr_ivw(MRObject)
-mr_egger(MRObject)
-mr_median(MRObject)
+freet <- freet %>% 
+  rename(POS=BP)
 
-mr_allmethods(MRObject)
-mr_allmethods(MRObject, method="main")
+freet$CHR <- as.character(freet$CHR)
+testosterone_cluster$CHR <- as.character(testosterone_cluster$CHR)
 
+testosterone_cluster_free_t_weights <- merge(testosterone_cluster, freet,  by=c("CHR", "POS"))
 
-plot(allele_matching$ABS_BETA_T, allele_matching$HARM_BETA_DBP  ,
-     xlab = "SNP effect on testosterone",  # Replace with your desired x-axis label
-     ylab = "SNP effect on systolic blood pressure",
-     main = "Male Testosterone")  # Replace with your desired y-axis label
+testosterone_cluster_free_t_weights <- testosterone_cluster_free_t_weights %>% 
+  select(CHR, POS, ID, Trait_raising, Other_allele, Weight, SE_weight, SNP, ALLELE1, ALLELE0, BETA, SE)
 
-M_T_proxies_output$StdError <- as.numeric(M_T_proxies_output$StdError)
-IVW_weights <- M_T_proxies_output$StdError^-2 
-inverse_weighted_LR <- lm(allele_matching$HARM_BETA_DBP ~ allele_matching$ABS_BETA_T - 1, weights = IVW_weights)
-summary(inverse_weighted_LR)
+testosterone_cluster_free_t_weights <- testosterone_cluster_free_t_weights %>% 
+  mutate(CHRPOS=paste0(CHR,":",POS))
 
-abline(inverse_weighted_LR, col = "red")
+### now investigating the HDL and LDL cholesterol files 
+### this is to check the snps are in the right format 
 
+hdl <- fread("/rfs/project/rfs-mpB3sSsgAn4/Studies/People/Emily/Testosterone_CAD_MR/Multivariable_MR/HDL_INV_EUR_HRC_1KGP3_others_MALE.meta.singlevar.results.gz")
+ldl <- fread("/rfs/project/rfs-mpB3sSsgAn4/Studies/People/Emily/Testosterone_CAD_MR/Multivariable_MR/LDL_INV_EUR_HRC_1KGP3_others_MALE.meta.singlevar.results.gz")
 
 
-##################################################################################
+### good, we have chrpos info so we can match on that
+### grepping out the files in linux based on the chrpos info
 
 
+## reading back in the grepped info to match with the testosterone chrpos info and run the MR 
 
+hdl_grepped <- fread("/rfs/project/rfs-mpB3sSsgAn4/Studies/People/Emily/Testosterone_CAD_MR/Multivariable_MR/testosterone_snps_in_HDL_info.tsv")
+hdl_grepped <- hdl_grepped %>% 
+  mutate(ALLELE1=ALT,
+         ALLELE0=REF)
 
-#######################################################################################
+hdl_grepped <- hdl_grepped %>% 
+  filter(rsID!="rs56196860")
 
-### other interprative graphs #############
+hdl_grepped <- hdl_grepped %>% 
+  rename(CHR=CHROM,
+         POS=POS_b37)
 
-mr_plot(MRObject, interactive=FALSE, labels=TRUE)
-mr_forest(MRObject, ordered=TRUE)
-mr_loo(MRObject)
-mr_funnel(MRObject)
+testosterone_cluster$POS <- as.integer(testosterone_cluster$POS)
+hdl_grepped$CHR <- as.character(hdl_grepped$CHR)
+testosterone_cluster$CHR <- as.character(testosterone_cluster$CHR)
 
-#### DBP ############################################################################################################################################################
 
-library(tidyverse)
-library(readxl)
-library(MendelianRandomization)
+merged <- merge(testosterone_cluster_free_t_weights, hdl_grepped, by=c("CHR", "POS"))
 
-##################################################################################
+duplicates <- merged[duplicated(merged$ID), ]
+merged <- merged[!(merged$ID %in% merged$ID[duplicated(merged$ID)]), ]
 
-# HARMONISATION AND MR
 
-##################################################################################
+merged <- merged %>% 
+  rename(effect_allele_t = ALLELE1.x, 
+         other_allele_t = ALLELE0.y,
+         beta_t = BETA, 
+         se_t = SE.x,
+         effect_allele_hdl = ALT,
+         other_allele_hdl = REF,
+         beta_hdl = EFFECT_SIZE,
+         se_hdl = SE.y)
 
-# looking at the allele matching and frequencies etc.
-M_T_proxies_output <- read_excel("not found inputs/SNPs_M_Testosterone_AND_DBP.xlsx", sheet = "T&P E&O")
-M_T_proxies_output <- M_T_proxies_output[-1,]
 
+merged_selected <- merged %>% 
+  select(ID, effect_allele_t, other_allele_t, beta_t, se_t, effect_allele_hdl, other_allele_hdl, beta_hdl,se_hdl)
 
-allele_matching <- select(M_T_proxies_output, "CHR", "BP", "SNP.x", "ALLELE1", "ALLELE0", "A1FREQ", "BETA", "SE", "Allele1", "Allele2", "Freq1", "Effect", "StdError" )
 
-# renaming the columns for ease of use 
-allele_matching <- allele_matching %>%
-  rename(
-    SNP_T = "SNP.x",
-    other_allele_T = "ALLELE1",
-    reference_allele_T = "ALLELE0",
-    A1FREQ_T = "A1FREQ",
-    BETA_T = "BETA",
-    SE_T = "SE",
-    reference_allele_DBP = "Allele2",
-    other_allele_DBP = "Allele1",
-    eaf_DBP = "Freq1",
-    beta_DBP = "Effect",
-    se_DBP = "StdError"
-  )
+merged_selected <- merged_selected %>% 
+  mutate(t_abs_beta=abs(beta_t))
 
-# Removing SNP that was pleitropic in CAD MR 
-allele_matching <- allele_matching[!allele_matching$SNP_T == "rs56196860", ]
-M_T_proxies_output <- M_T_proxies_output[!M_T_proxies_output$Target == "rs56196860", ]
+merged_selected <- merged_selected %>% 
+  mutate(t_inc_allele=ifelse(beta_t<0, other_allele_t, effect_allele_t))
 
+merged_selected <- merged_selected %>% 
+  mutate(hdl_beta_harmonised=ifelse(effect_allele_hdl!=t_inc_allele, beta_hdl*-1, beta_hdl))
 
-# identify trait increasing allele for SHBG
+merged_selected$se_hdl <- as.numeric(merged_selected$se_hdl)
+IVW_weights <- merged_selected$se_hdl^-2
+IVW <- lm(hdl_beta_harmonised ~ t_abs_beta -1, weights = IVW_weights, data=merged_selected)
+summary(IVW)
 
-allele_matching$T_inc_allele <- if_else(allele_matching$BETA_T<0, allele_matching$reference_allele_T, 
-                                        allele_matching$other_allele_T)
 
-allele_matching$BETA_T <- as.numeric(allele_matching$BETA_T)
-allele_matching$ABS_BETA_T <- abs(allele_matching$BETA_T)
+plot(merged_selected$t_abs_beta, merged_selected$hdl_beta_harmonised)
+abline(IVW, col = "red")
 
-# harmonising so the effect alleles for CAD and SHBG are the same
-# changing the betas here 
 
-allele_matching$beta_DBP <- as.numeric(allele_matching$beta_DBP)
+plot(merged_selected$t_abs_beta, merged_selected$hdl_beta_harmonised,
+     xlab = "Testosterone", 
+     ylab = "HDL-c",
+     main = "MR of testosterone to HDL-c")
+abline(IVW, col = "red")
 
-# CAPITALISE ALL THE ALLELE VALUES FOR DBP
 
-allele_matching$other_allele_DBP <- toupper(allele_matching$other_allele_DBP)
-allele_matching$reference_allele_DBP <- toupper(allele_matching$reference_allele_DBP)
 
-allele_matching$HARM_BETA_DBP <- if_else(allele_matching$T_inc_allele!=allele_matching$other_allele_DBP,
-                                         allele_matching$beta_DBP*-1, allele_matching$beta_DBP)
 
 
 
-
-plot(allele_matching$ABS_BETA_T, allele_matching$HARM_BETA_DBP)
-
-
-M_T_proxies_output$StdError <- as.numeric(M_T_proxies_output$StdError)
-IVW_weights <- M_T_proxies_output$StdError^-2 
-inverse_weighted_LR <- lm(allele_matching$HARM_BETA_DBP ~ allele_matching$ABS_BETA_T- 1 ,weights=IVW_weights)
-summary(inverse_weighted_LR)
-abline(inverse_weighted_LR, col="red")
-summary_model <- summary(inverse_weighted_LR)
-summary_model
-
-
-
-allele_matching$ABS_BETA_T <- as.numeric(allele_matching$ABS_BETA_T)
-allele_matching$se_DBP <- as.numeric(allele_matching$se_DBP)
-allele_matching$SE_T <- as.numeric(allele_matching$SE_T)
-
-
-
-MRObject = mr_input(bx = allele_matching$ABS_BETA_T, bxse = allele_matching$SE_T, 
-                    by = allele_matching$HARM_BETA_DBP, byse = allele_matching$se_DBP, snps = allele_matching$SNP_T)
-
-mr_ivw(MRObject)
-mr_egger(MRObject)
-mr_median(MRObject)
-
-mr_allmethods(MRObject)
-mr_allmethods(MRObject, method="main")
-
-
-plot(allele_matching$ABS_BETA_T, allele_matching$HARM_BETA_DBP  ,
-     xlab = "SNP effect on testosterone",  # Replace with your desired x-axis label
-     ylab = "SNP effect on diastolic blood pressure",
-     main = "Male Testosterone")  # Replace with your desired y-axis label
-
-M_T_proxies_output$StdError <- as.numeric(M_T_proxies_output$StdError)
-IVW_weights <- M_T_proxies_output$StdError^-2 
-inverse_weighted_LR <- lm(allele_matching$HARM_BETA_DBP ~ allele_matching$ABS_BETA_T - 1, weights = IVW_weights)
-summary(inverse_weighted_LR)
-
-abline(inverse_weighted_LR, col = "red")
-
-
-
-##################################################################################
-
-
-
-
-#######################################################################################
-
-### other interprative graphs #############
-
-mr_plot(MRObject, interactive=FALSE, labels=TRUE)
-mr_forest(MRObject, ordered=TRUE)
-mr_loo(MRObject)
-mr_funnel(MRObject)
-
-
-
-
-
-
-
-
-
-#### HDL-c ############################################################################################################################################################
-
-
-library(tidyverse)
-library(readxl)
-library(MendelianRandomization)
-
-##################################################################################
-
-# HARMONISATION AND MR
-
-##################################################################################
-
-# looking at the allele matching and frequencies etc.
-M_T_proxies_output <- read_excel("not found inputs/SNPs_M_Testosterone_AND_HDL.xlsx", sheet = "T&P E&O")
-
-
-
-allele_matching <- select(M_T_proxies_output, "SNP.x", "Target", "ALLELE1", "ALLELE0", "A1FREQ", "BETA", "SE.x", "REF", "ALT", "POOLED_ALT_AF", "EFFECT_SIZE", "SE.y" )
-
-# renaming the columns for ease of use 
-allele_matching <- allele_matching %>%
-  rename(
-    SNP_T = "SNP.x",
-    other_allele_T = "ALLELE1",
-    reference_allele_T = "ALLELE0",
-    A1FREQ_T = "A1FREQ",
-    BETA_T = "BETA",
-    SE_T = "SE.x",
-    reference_allele_HDL = "REF",
-    other_allele_HDL = "ALT",
-    eaf_HDL = "POOLED_ALT_AF",
-    beta_HDL = "EFFECT_SIZE",
-    se_HDL = "SE.y"
-  )
-
-
-allele_matching <- allele_matching[!allele_matching$Target == "rs56196860", ]
-M_T_proxies_output <- M_T_proxies_output[!M_T_proxies_output$Target == "rs56196860", ]
-
-allele_matching <- allele_matching[1:(nrow(allele_matching) - 1), ]
-M_T_proxies_output <- M_T_proxies_output[1:(nrow(M_T_proxies_output) -1), ]
-# identify trait increasing allele for T
-
-allele_matching$T_inc_allele <- if_else(allele_matching$BETA_T<0, allele_matching$reference_allele_T, 
-                                        allele_matching$other_allele_T)
-
-allele_matching$BETA_T <- as.numeric(allele_matching$BETA_T)
-allele_matching$ABS_BETA_T <- abs(allele_matching$BETA_T)
-
-# harmonising so the effect alleles for CAD and SHBG are the same
-# changing the betas here 
-
-allele_matching$beta_HDL <- as.numeric(allele_matching$beta_HDL)
-
-allele_matching$HARM_BETA_HDL <- if_else(allele_matching$T_inc_allele!=allele_matching$other_allele_HDL,
-                                         allele_matching$beta_HDL*-1, allele_matching$beta_HDL)
-
-
-
-
-plot(allele_matching$ABS_BETA_T, allele_matching$HARM_BETA_HDL)
-
-
-M_T_proxies_output$SE.y <- as.numeric(M_T_proxies_output$SE.y)
-IVW_weights <- M_T_proxies_output$SE.y^-2 
-inverse_weighted_LR <- lm(allele_matching$HARM_BETA_HDL ~ allele_matching$ABS_BETA_T- 1 ,weights=IVW_weights)
-summary(inverse_weighted_LR)
-abline(inverse_weighted_LR, col="red")
-summary_model <- summary(inverse_weighted_LR)
-summary_model
-
-
-
-allele_matching$ABS_BETA_T <- as.numeric(allele_matching$ABS_BETA_T)
-allele_matching$se_HDL <- as.numeric(allele_matching$se_HDL)
-allele_matching$SE_T <- as.numeric(allele_matching$SE_T)
-
-
-
-MRObject = mr_input(bx = allele_matching$ABS_BETA_T, bxse = allele_matching$SE_T, 
-                    by = allele_matching$HARM_BETA_HDL, byse = allele_matching$se_HDL, snps = allele_matching$SNP_T)
-
+MRObject = mr_input(bx = merged_selected$t_abs_beta, bxse = merged_selected$se_t, 
+                    by = merged_selected$hdl_beta_harmonised, byse = merged_selected$se_hdl, snps = merged_selected$ID)
 mr_ivw(MRObject)
 mr_egger(MRObject)
 mr_median(MRObject)
 
 
-mr_allmethods(MRObject)
-mr_plot(mr_allmethods(MRObject))
 
-
-
-plot(allele_matching$ABS_BETA_T, allele_matching$HARM_BETA_HDL  ,
-     xlab = "SNP effect on Testosterone",  # Replace with your desired x-axis label
-     ylab = "SNP effect on HDL-c",
-     main = "Male Testosterone")  # Replace with your desired y-axis label
-
-M_T_proxies_output$SE.y <- as.numeric(M_T_proxies_output$SE.y)
-IVW_weights <- M_T_proxies_output$SE.y^-2 
-inverse_weighted_LR <- lm(allele_matching$HARM_BETA_HDL ~ allele_matching$ABS_BETA_T - 1, weights = IVW_weights)
-summary(inverse_weighted_LR)
-
-abline(inverse_weighted_LR, col = "red")
-
-
-#######################################################################################
-
-### other interprative graphs #############
-
-mr_plot(MRObject, interactive=FALSE, labels=TRUE)
-mr_forest(MRObject, ordered=TRUE)
-mr_loo(MRObject)
-mr_funnel(MRObject)
+hdl_info <- merged_selected %>% 
+  select(ID, t_abs_beta,t_inc_allele, hdl_beta_harmonised, se_hdl, se_t)
 
 
 
 
-#### LDL-c ############################################################################################################################################################
-
-
-library(tidyverse)
-library(readxl)
-library(MendelianRandomization)
-
-##################################################################################
-
-# HARMONISATION AND MR
-
-##################################################################################
-
-# looking at the allele matching and frequencies etc.
-M_T_proxies_output <- read_excel("not found inputs/SNPs_M_Testosterone_AND_LDL.xlsx", sheet = "T&P E&O")
+#### REPEATING FOR LDL
 
 
 
-allele_matching <- select(M_T_proxies_output, "SNP.x", "Target", "ALLELE1", "ALLELE0", "A1FREQ", "BETA", "SE.x", "REF", "ALT", "POOLED_ALT_AF", "EFFECT_SIZE", "SE.y" )
+## reading back in the grepped info to match with the testosterone chrpos info and run the MR 
 
-# renaming the columns for ease of use 
-allele_matching <- allele_matching %>%
-  rename(
-    SNP_T = "SNP.x",
-    effect_allele_T = "ALLELE1",
-    reference_allele_T = "ALLELE0",
-    A1FREQ_T = "A1FREQ",
-    BETA_T = "BETA",
-    SE_T = "SE.x",
-    reference_allele_LDL = "REF",
-    effect_allele_LDL = "ALT",
-    eaf_LDL = "POOLED_ALT_AF",
-    beta_LDL = "EFFECT_SIZE",
-    se_LDL = "SE.y"
-  )
+ldl_grepped <- fread("/rfs/project/rfs-mpB3sSsgAn4/Studies/People/Emily/Testosterone_CAD_MR/Multivariable_MR/testosterone_snps_in_LDL_info.tsv")
+ldl_grepped <- ldl_grepped %>% 
+  mutate(ALLELE1=ALT,
+         ALLELE0=REF)
+
+ldl_grepped <- ldl_grepped %>% 
+  filter(rsID!="rs56196860")
+
+ldl_grepped <- ldl_grepped %>% 
+  rename(CHR=CHROM,
+         POS=POS_b37)
 
 
-allele_matching <- allele_matching[!allele_matching$Target == "rs56196860", ]
-M_T_proxies_output <- M_T_proxies_output[!M_T_proxies_output$Target == "rs56196860", ]
-# identify trait increasing allele for SHBG
-
-allele_matching$T_inc_allele <- if_else(allele_matching$BETA_T<0, allele_matching$reference_allele_T, 
-                                           allele_matching$effect_allele_T)
-
-allele_matching$BETA_T <- as.numeric(allele_matching$BETA_T)
-allele_matching$ABS_BETA_T <- abs(allele_matching$BETA_T)
-
-# harmonising so the effect alleles for CAD and SHBG are the same
-# changing the betas here 
-
-allele_matching$beta_LDL <- as.numeric(allele_matching$beta_LDL)
-
-allele_matching$HARM_BETA_LDL <- if_else(allele_matching$T_inc_allele!=allele_matching$effect_allele_LDL,
-                                         allele_matching$beta_LDL*-1, allele_matching$beta_LDL)
+ldl_grepped$CHR <- as.character(ldl_grepped$CHR)
 
 
 
+merged <- merge(testosterone_cluster_free_t_weights, ldl_grepped, by=c("CHR", "POS"))
 
-plot(allele_matching$ABS_BETA_T, allele_matching$HARM_BETA_LDL)
-
-
-M_T_proxies_output$SE.y <- as.numeric(M_T_proxies_output$SE.y)
-IVW_weights <- M_T_proxies_output$SE.y^-2 
-inverse_weighted_LR <- lm(allele_matching$HARM_BETA_LDL ~ allele_matching$ABS_BETA_T- 1 ,weights=IVW_weights)
-summary(inverse_weighted_LR)
-abline(inverse_weighted_LR, col="red")
-summary_model <- summary(inverse_weighted_LR)
-summary_model
+duplicates <- merged[duplicated(merged$ID), ]
+merged <- merged[!(merged$ID %in% merged$ID[duplicated(merged$ID)]), ]
 
 
+merged <- merged %>% 
+  rename(effect_allele_t = ALLELE1.x, 
+         other_allele_t = ALLELE0.y,
+         beta_t = BETA, 
+         se_t = SE.x,
+         effect_allele_ldl = ALT,
+         other_allele_ldl = REF,
+         beta_ldl = EFFECT_SIZE,
+         se_ldl = SE.y)
 
-allele_matching$ABS_BETA_T <- as.numeric(allele_matching$ABS_BETA_T)
-allele_matching$se_LDL <- as.numeric(allele_matching$se_LDL)
-allele_matching$SE_T <- as.numeric(allele_matching$SE_T)
+
+merged_selected <- merged %>% 
+  select(ID, effect_allele_t, other_allele_t, beta_t, se_t, effect_allele_ldl, other_allele_ldl, beta_ldl,se_ldl)
+
+
+merged_selected <- merged_selected %>% 
+  mutate(t_abs_beta=abs(beta_t))
+
+merged_selected <- merged_selected %>% 
+  mutate(t_inc_allele=ifelse(beta_t<0, other_allele_t, effect_allele_t))
+
+merged_selected <- merged_selected %>% 
+  mutate(ldl_beta_harmonised=ifelse(effect_allele_ldl!=t_inc_allele, beta_ldl*-1, beta_ldl))
+
+merged_selected$se_ldl <- as.numeric(merged_selected$se_ldl)
+IVW_weights <- merged_selected$se_ldl^-2
+IVW <- lm(ldl_beta_harmonised ~ t_abs_beta -1, weights = IVW_weights, data=merged_selected)
+summary(IVW)
+
+
+plot(merged_selected$t_abs_beta, merged_selected$ldl_beta_harmonised)
+abline(IVW, col = "red")
+
+
+plot(merged_selected$t_abs_beta, merged_selected$ldl_beta_harmonised,
+     xlab = "Testosterone", 
+     ylab = "LDL-c",
+     main = "MR of testosterone to LDL-c")
+abline(IVW, col = "red")
 
 
 
-MRObject = mr_input(bx = allele_matching$ABS_BETA_T, bxse = allele_matching$SE_T, 
-                    by = allele_matching$HARM_BETA_LDL, byse = allele_matching$se_LDL, snps = allele_matching$SNP_T)
 
+
+
+MRObject = mr_input(bx = merged_selected$t_abs_beta, bxse = merged_selected$se_t, 
+                    by = merged_selected$ldl_beta_harmonised, byse = merged_selected$se_ldl, snps = merged_selected$ID)
 mr_ivw(MRObject)
 mr_egger(MRObject)
 mr_median(MRObject)
 
 
-mr_allmethods(MRObject)
-mr_plot(mr_allmethods(MRObject))
-
-
-
-plot(allele_matching$ABS_BETA_T, allele_matching$HARM_BETA_LDL  ,
-     xlab = "SNP effect on Testosterone",  # Replace with your desired x-axis label
-     ylab = "SNP effect on LDL-c",
-     main = "Male Testosterone")  # Replace with your desired y-axis label
-
-M_T_proxies_output$SE.y <- as.numeric(M_T_proxies_output$SE.y)
-IVW_weights <- M_T_proxies_output$SE.y^-2 
-inverse_weighted_LR <- lm(allele_matching$HARM_BETA_LDL ~ allele_matching$ABS_BETA_T - 1, weights = IVW_weights)
-summary(inverse_weighted_LR)
-
-abline(inverse_weighted_LR, col = "red")
-
-
-#######################################################################################
-
-### other interprative graphs #############
-
-mr_plot(MRObject, interactive=FALSE, labels=TRUE)
-mr_forest(MRObject, ordered=TRUE)
-mr_loo(MRObject)
-mr_funnel(MRObject)
 
 
 
 
 
 
-#### Triglycerides ############################################################################################################################################################
-
-
-library(tidyverse)
-library(readxl)
-library(MendelianRandomization)
-
-##################################################################################
-
-# HARMONISATION AND MR
-
-##################################################################################
-
-# looking at the allele matching and frequencies etc.
-M_T_proxies_output <- read_excel("not found inputs/SNPs_M_Testosterone_AND_TG.xlsx", sheet = "T&P E&O")
-
-
-
-allele_matching <- select(M_T_proxies_output, "SNP.x", "Target", "ALLELE1", "ALLELE0", "A1FREQ", "BETA", "SE.x", "REF", "ALT", "POOLED_ALT_AF", "EFFECT_SIZE", "SE.y" )
-
-# renaming the columns for ease of use 
-allele_matching <- allele_matching %>%
-  rename(
-    SNP_T = "SNP.x",
-    other_allele_T = "ALLELE1",
-    reference_allele_T = "ALLELE0",
-    A1FREQ_T = "A1FREQ",
-    BETA_T = "BETA",
-    SE_T = "SE.x",
-    reference_allele_TG = "REF",
-    other_allele_TG = "ALT",
-    eaf_TG = "POOLED_ALT_AF",
-    beta_TG = "EFFECT_SIZE",
-    se_TG = "SE.y"
-  )
-
-
-allele_matching <- allele_matching[!allele_matching$Target == "rs56196860", ]
-M_T_proxies_output <- M_T_proxies_output[!M_T_proxies_output$Target == "rs56196860", ]
-M_T_proxies_output <- head(M_T_proxies_output, -1)
-allele_matching <- head(allele_matching, -1)
-# identify trait increasing allele for t
-
-allele_matching$T_inc_allele <- if_else(allele_matching$BETA_T<0, allele_matching$reference_allele_T, 
-                                        allele_matching$other_allele_T)
-
-allele_matching$BETA_T <- as.numeric(allele_matching$BETA_T)
-allele_matching$ABS_BETA_T <- abs(allele_matching$BETA_T)
-
-# harmonising so the effect alleles for CAD and SHBG are the same
-# changing the betas here 
-
-allele_matching$beta_TG <- as.numeric(allele_matching$beta_TG)
-
-allele_matching$HARM_BETA_TG <- if_else(allele_matching$T_inc_allele!=allele_matching$other_allele_TG,
-                                         allele_matching$beta_TG*-1, allele_matching$beta_TG)
+ldl_info <- merged_selected %>% 
+  select(ID, t_abs_beta,t_inc_allele, ldl_beta_harmonised, se_ldl, se_t)
 
 
 
 
-plot(allele_matching$ABS_BETA_T, allele_matching$HARM_BETA_TG)
 
 
-M_T_proxies_output$SE.y <- as.numeric(M_T_proxies_output$SE.y)
-IVW_weights <- M_T_proxies_output$SE.y^-2 
-inverse_weighted_LR <- lm(allele_matching$HARM_BETA_TG ~ allele_matching$ABS_BETA_T- 1 ,weights=IVW_weights)
-summary(inverse_weighted_LR)
-abline(inverse_weighted_LR, col="red")
-summary_model <- summary(inverse_weighted_LR)
-summary_model
+### repeating for triglycerides - bear in mind these are log transformed 
 
 
 
-allele_matching$ABS_BETA_T <- as.numeric(allele_matching$ABS_BETA_T)
-allele_matching$se_TG <- as.numeric(allele_matching$se_TG)
-allele_matching$SE_T <- as.numeric(allele_matching$SE_T)
+## reading back in the grepped info to match with the testosterone chrpos info and run the MR 
+
+tg_grepped <- fread("/rfs/project/rfs-mpB3sSsgAn4/Studies/People/Emily/Testosterone_CAD_MR/Multivariable_MR/testosterone_in_tg.tsv")
+tg_grepped <- tg_grepped %>% 
+  mutate(ALLELE1=ALT,
+         ALLELE0=REF)
+
+tg_grepped <- tg_grepped %>% 
+  filter(rsID!="rs56196860")
+
+tg_grepped <- tg_grepped %>% 
+  rename(CHR=CHROM,
+         POS=POS_b37)
+
+
+tg_grepped$CHR <- as.character(tg_grepped$CHR)
 
 
 
-MRObject = mr_input(bx = allele_matching$ABS_BETA_T, bxse = allele_matching$SE_T, 
-                    by = allele_matching$HARM_BETA_TG, byse = allele_matching$se_TG, snps = allele_matching$SNP_T)
+merged <- merge(testosterone_cluster_free_t_weights, tg_grepped, by=c("CHR", "POS"))
 
+duplicates <- merged[duplicated(merged$ID), ]
+merged <- merged[!(merged$ID %in% merged$ID[duplicated(merged$ID)]), ]
+
+
+merged <- merged %>% 
+  rename(effect_allele_t = ALLELE1.x, 
+         other_allele_t = ALLELE0.y,
+         beta_t = BETA, 
+         se_t = SE.x,
+         effect_allele_tg = ALT,
+         other_allele_tg = REF,
+         beta_tg = EFFECT_SIZE,
+         se_tg = SE.y)
+
+
+merged_selected <- merged %>% 
+  select(ID, effect_allele_t, other_allele_t, beta_t, se_t, effect_allele_tg, other_allele_tg, beta_tg, se_tg)
+
+
+merged_selected <- merged_selected %>% 
+  mutate(t_abs_beta=abs(beta_t))
+
+merged_selected <- merged_selected %>% 
+  mutate(t_inc_allele=ifelse(beta_t<0, other_allele_t, effect_allele_t))
+
+merged_selected <- merged_selected %>% 
+  mutate(tg_beta_harmonised=ifelse(effect_allele_tg!=t_inc_allele, beta_tg*-1, beta_tg))
+
+merged_selected$se_tg <- as.numeric(merged_selected$se_tg)
+IVW_weights <- merged_selected$se_tg^-2
+IVW <- lm(tg_beta_harmonised ~ t_abs_beta -1, weights = IVW_weights, data=merged_selected)
+summary(IVW)
+
+
+plot(merged_selected$t_abs_beta, merged_selected$tg_beta_harmonised)
+abline(IVW, col = "red")
+
+
+plot(merged_selected$t_abs_beta, merged_selected$tg_beta_harmonised,
+     xlab = "Testosterone", 
+     ylab = "Triglycerides",
+     main = "MR of testosterone to Triglycerides")
+abline(IVW, col = "red")
+
+
+
+
+
+
+MRObject = mr_input(bx = merged_selected$t_abs_beta, bxse = merged_selected$se_t, 
+                    by = merged_selected$tg_beta_harmonised, byse = merged_selected$se_tg, snps = merged_selected$ID)
 mr_ivw(MRObject)
 mr_egger(MRObject)
 mr_median(MRObject)
 
 
-mr_allmethods(MRObject)
-mr_plot(mr_allmethods(MRObject))
 
 
 
-plot(allele_matching$ABS_BETA_T, allele_matching$HARM_BETA_TG  ,
-     xlab = "SNP effect on Testosterone",  # Replace with your desired x-axis label
-     ylab = "SNP effect on triglycerides",
-     main = "Male Testosterone")  # Replace with your desired y-axis label
-
-M_T_proxies_output$SE.y <- as.numeric(M_T_proxies_output$SE.y)
-IVW_weights <- M_T_proxies_output$SE.y^-2 
-inverse_weighted_LR <- lm(allele_matching$HARM_BETA_TG ~ allele_matching$ABS_BETA_T - 1, weights = IVW_weights)
-summary(inverse_weighted_LR)
-
-abline(inverse_weighted_LR, col = "red")
 
 
-#######################################################################################
 
-### other interprative graphs #############
+ldl_info <- merged_selected %>% 
+  select(ID, t_abs_beta,t_inc_allele, ldl_beta_harmonised, se_ldl, se_t)
 
-mr_plot(MRObject, interactive=FALSE, labels=TRUE)
-mr_forest(MRObject, ordered=TRUE)
-mr_loo(MRObject)
-mr_funnel(MRObject)
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+#### t2d male
+t2d_grepped <- fread("/rfs/project/rfs-mpB3sSsgAn4/Studies/People/Emily/Testosterone_CAD_MR/Multivariable_MR/testosterone_snps_in_T2D.tsv")
+t2d_grepped <- t2d_grepped %>% 
+  rename(CHR=Chr,
+         POS=Pos)
+
+
+
+t2d_grepped$CHR <- as.character(t2d_grepped$CHR)
+
+
+merged <- merge(testosterone_cluster_free_t_weights, t2d_grepped, by=c("CHR", "POS"))
+
+
+
+merged <- merged[grepl("[AGTC]", merged$EA), ]
+
+merged <- merged %>% 
+  filter(CHRPOS!="16:53822169")
+merged <- merged %>% 
+  filter(CHRPOS!="12:2908330")
+merged <- merged %>% 
+  filter(ID!="rs2594948")
+
+
+
+merged <- merged %>% 
+  rename(effect_allele_t = Trait_raising, 
+         other_allele_t = Other_allele,
+         beta_t = Weight, 
+         se_t = SE_weight,
+         effect_allele_t2d = EA,
+         other_allele_t2d = NEA,
+         beta_t2d =  Beta,
+         se_t2d = SE.y)
+
+
+merged_selected <- merged %>% 
+  select(ID, effect_allele_t, other_allele_t, beta_t, se_t, effect_allele_t2d, other_allele_t2d, beta_t2d,se_t2d)
+
+
+merged_selected <- merged_selected %>% 
+  mutate(t_abs_beta=abs(beta_t))
+
+merged_selected <- merged_selected %>% 
+  mutate(t_inc_allele=ifelse(beta_t<0, other_allele_t, effect_allele_t))
+
+merged_selected <- merged_selected %>% 
+  mutate(t2d_beta_harmonised=ifelse(effect_allele_t2d!=t_inc_allele, beta_t2d*-1, beta_t2d))
+
+merged_selected$se_t2d <- as.numeric(merged_selected$se_t2d)
+IVW_weights <- merged_selected$se_t2d^-2
+IVW <- lm(t2d_beta_harmonised ~ t_abs_beta -1, weights = IVW_weights, data=merged_selected)
+summary(IVW)
+
+
+plot(merged_selected$t_abs_beta, merged_selected$t2d_beta_harmonised)
+abline(IVW, col = "red")
+
+
+plot(merged_selected$t_abs_beta, merged_selected$t2d_beta_harmonised,
+     xlab = "Testosterone", 
+     ylab = "SBP",
+     main = "MR of testosterone to SBP")
+abline(IVW, col = "red")
+
+
+
+
+
+
+MRObject = mr_input(bx = merged_selected$t_abs_beta, bxse = merged_selected$se_t, 
+                    by = merged_selected$t2d_beta_harmonised, byse = merged_selected$se_t2d, snps = merged_selected$ID)
+mr_ivw(MRObject)
+mr_egger(MRObject)
+mr_median(MRObject)
+
+
+
+
+# devtools::install_github("rondolab/MR-PRESSO", force = TRUE)
+library(MRPRESSO)
+
+# run the M_TESTSOTERONE_CAD script before running this 
+
+merged_selected <- as.data.frame(merged_selected)
+mr_presso(BetaOutcome = "t2d_beta_harmonised", BetaExposure = "t_abs_beta", SdOutcome = "se_t", SdExposure = "se_t2d", OUTLIERtest = TRUE, DISTORTIONtest = TRUE, data = merged_selected, NbDistribution = 4000,  SignifThreshold = 0.05)
+
+
+
+### removing outliers and performing analysis again 
+
+merged <- merged[!merged$SNP.x == "rs56196860", ]
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+t2d_info <- merged_selected %>% 
+  select(ID, t_abs_beta,t_inc_allele, sbp_beta_harmonised, se_sbp, se_t)
+
+
+
+
+
+
+
+
+
+
+
+#### it is actually blood pressure that is the likely mediator so we need to look at that
+## also looked up on chromosome and position info 
+
+dbp_grepped <- fread("/rfs/project/rfs-mpB3sSsgAn4/Studies/People/Emily/Testosterone_CAD_MR/Multivariable_MR/dbp_found.tsv")
+dbp_grepped <- dbp_grepped %>% 
+  rename(CHR=chromosome,
+         POS=base_pair_location)
+
+
+dbp_grepped$CHR <- as.character(dbp_grepped$CHR)
+dbp_grepped <- dbp_grepped %>% 
+  filter(rs_id!="rs56196860")
+
+
+merged <- merge(testosterone_cluster_free_t_weights, dbp_grepped, by=c("CHR", "POS"))
+
+merged <- merged[grepl("[AGTC]", merged$effect_allele), ]
+
+merged <- merged[!merged$ID == "rs56196860", ]
+duplicates <- merged[duplicated(merged$ID), ]
+merged <- merged[!(merged$ID %in% merged$ID[duplicated(merged$ID)]), ]
+
+merged <- merged %>% 
+  rename(effect_allele_t = ALLELE1, 
+         other_allele_t = ALLELE0,
+         beta_t = BETA, 
+         se_t = SE,
+         effect_allele_dbp = effect_allele,
+         other_allele_dbp = other_allele,
+         beta_dbp = beta,
+         se_dbp = standard_error)
+
+
+merged_selected <- merged %>% 
+  select(ID, CHR, POS,  effect_allele_t, other_allele_t, beta_t, se_t, effect_allele_dbp, other_allele_dbp, beta_dbp,se_dbp)
+
+
+merged_selected <- merged_selected %>% 
+  mutate(t_abs_beta=abs(beta_t))
+
+merged_selected <- merged_selected %>% 
+  mutate(t_inc_allele=ifelse(beta_t<0, other_allele_t, effect_allele_t))
+
+merged_selected <- merged_selected %>% 
+  mutate(dbp_beta_harmonised=ifelse(effect_allele_dbp!=t_inc_allele, beta_dbp*-1, beta_dbp))
+
+merged_selected$se_dbp <- as.numeric(merged_selected$se_dbp)
+IVW_weights <- merged_selected$se_dbp^-2
+IVW <- lm(dbp_beta_harmonised ~ t_abs_beta -1, weights = IVW_weights, data=merged_selected)
+summary(IVW)
+
+
+plot(merged_selected$t_abs_beta, merged_selected$dbp_beta_harmonised)
+abline(IVW, col = "red")
+
+
+plot(merged_selected$t_abs_beta, merged_selected$dbp_beta_harmonised,
+     xlab = "Testosterone", 
+     ylab = "DBP",
+     main = "MR of testosterone to DBP")
+abline(IVW, col = "red")
+
+
+
+
+
+
+MRObject = mr_input(bx = merged_selected$t_abs_beta, bxse = merged_selected$se_t, 
+                    by = merged_selected$dbp_beta_harmonised, byse = merged_selected$se_dbp, snps = merged_selected$ID)
+mr_ivw(MRObject)
+mr_egger(MRObject)
+mr_median(MRObject)
+
+
+
+
+
+
+dbp_info <- merged_selected %>% 
+  select(ID, CHR,POS, t_abs_beta,t_inc_allele, dbp_beta_harmonised, se_dbp, se_t)
+
+#### it is actually blood pressure that is the likely mediator so we need to look at that
+## also looked up on chromosome and position info 
+
+sbp_grepped <- fread("/rfs/project/rfs-mpB3sSsgAn4/Studies/People/Emily/Testosterone_CAD_MR/Multivariable_MR/sbp_found.tsv")
+sbp_grepped <- sbp_grepped %>% 
+  rename(CHR=chromosome,
+         POS=base_pair_location)
+
+sbp_grepped <- sbp_grepped %>% 
+  filter(rs_id!="rs56196860")
+
+sbp_grepped$CHR <- as.character(sbp_grepped$CHR)
+
+
+merged <- merge(testosterone_cluster_free_t_weights, sbp_grepped, by=c("CHR", "POS"))
+
+merged <- merged[grepl("[AGTC]", merged$effect_allele), ]
+
+merged <- merged[!merged$ID == "rs56196860", ]
+duplicates <- merged[duplicated(merged$ID), ]
+merged <- merged[!(merged$ID %in% merged$ID[duplicated(merged$ID)]), ]
+
+
+merged <- merged %>% 
+  rename(effect_allele_t = ALLELE1, 
+         other_allele_t = ALLELE0,
+         beta_t = BETA, 
+         se_t = SE,
+         effect_allele_sbp = effect_allele,
+         other_allele_sbp = other_allele,
+         beta_sbp = beta,
+         se_sbp = standard_error)
+
+
+merged_selected <- merged %>% 
+  select(ID, effect_allele_t, other_allele_t, beta_t, se_t, effect_allele_sbp, other_allele_sbp, beta_sbp,se_sbp)
+
+
+merged_selected <- merged_selected %>% 
+  mutate(t_abs_beta=abs(beta_t))
+
+merged_selected <- merged_selected %>% 
+  mutate(t_inc_allele=ifelse(beta_t<0, other_allele_t, effect_allele_t))
+
+merged_selected <- merged_selected %>% 
+  mutate(sbp_beta_harmonised=ifelse(effect_allele_sbp!=t_inc_allele, beta_sbp*-1, beta_sbp))
+
+merged_selected$se_sbp <- as.numeric(merged_selected$se_sbp)
+IVW_weights <- merged_selected$se_sbp^-2
+IVW <- lm(sbp_beta_harmonised ~ t_abs_beta -1, weights = IVW_weights, data=merged_selected)
+summary(IVW)
+
+
+plot(merged_selected$t_abs_beta, merged_selected$sbp_beta_harmonised)
+abline(IVW, col = "red")
+
+
+plot(merged_selected$t_abs_beta, merged_selected$sbp_beta_harmonised,
+     xlab = "Testosterone", 
+     ylab = "SBP",
+     main = "MR of testosterone to SBP")
+abline(IVW, col = "red")
+
+
+
+
+
+
+MRObject = mr_input(bx = merged_selected$t_abs_beta, bxse = merged_selected$se_t, 
+                    by = merged_selected$sbp_beta_harmonised, byse = merged_selected$se_sbp, snps = merged_selected$ID)
+mr_ivw(MRObject)
+mr_egger(MRObject)
+mr_median(MRObject)
+
+
+
+
+
+sbp_info <- merged_selected %>% 
+  select(ID, t_abs_beta,t_inc_allele, sbp_beta_harmonised, se_sbp, se_t)
+
+
+
+
+
+#### multivariable MR with DBP
+
+
+### need to pull out the CAD info 
+
+
+#### it is actually blood pressure that is the likely mediator so we need to look at that
+## also looked up on chromosome and position info 
+
+
+
+
+
+testosterone <- fread("/rfs/project/rfs-mpB3sSsgAn4/Studies/People/Emily/Testosterone_CAD_MR/Multivariable_MR/testosterone_cluster_with_chrpos_free_t_weights.tsv")
+cad_grepped <- fread("/rfs/project/rfs-mpB3sSsgAn4/Studies/People/Emily/Testosterone_CAD_MR/Multivariable_MR/testosterone_snps_in_cad_with_proxies.tsv")
+
+
+
+merged <- merge(testosterone, cad_grepped, by=c("CHR", "BP"))
+
+merged <- merged[grepl("[AGTC]", merged$reference_allele), ]
+
+merged <- merged %>% 
+  filter(SNP.x!="rs56196860")
+
+
+merged <- merged %>% 
+  rename(effect_allele_t = ALLELE1, 
+         other_allele_t = ALLELE0,
+         beta_t = BETA, 
+         se_t = SE,
+         effect_allele_cad = reference_allele,
+         other_allele_cad = other_allele,
+         beta_cad = male_beta,
+         se_cad = male_se)
+
+
+
+
+merged_selected <- merged %>% 
+  select(SNP.x, CHR, BP, effect_allele_t, other_allele_t, beta_t, se_t, effect_allele_cad, other_allele_cad, beta_cad,se_cad)
+
+
+merged_selected <- merged_selected %>% 
+  mutate(t_abs_beta=abs(beta_t))
+
+merged_selected <- merged_selected %>% 
+  mutate(t_inc_allele=ifelse(beta_t<0, other_allele_t, effect_allele_t))
+
+merged_selected <- merged_selected %>% 
+  mutate(cad_beta_harmonised=ifelse(effect_allele_cad!=t_inc_allele, beta_cad*-1, beta_cad))
+
+merged_selected$se_cad <- as.numeric(merged_selected$se_cad)
+IVW_weights <- merged_selected$se_cad^-2
+IVW <- lm(cad_beta_harmonised ~ t_abs_beta -1, weights = IVW_weights, data=merged_selected)
+summary(IVW)
+
+
+plot(merged_selected$t_abs_beta, merged_selected$cad_beta_harmonised)
+abline(IVW, col = "red")
+
+
+plot(merged_selected$t_abs_beta, merged_selected$cad_beta_harmonised,
+     xlab = "Testosterone", 
+     ylab = "CAD",
+     main = "MR of testosterone to DBP")
+abline(IVW, col = "red")
+
+
+
+
+
+
+MRObject = mr_input(bx = merged_selected$t_abs_beta, bxse = merged_selected$se_t, 
+                    by = merged_selected$cad_beta_harmonised, byse = merged_selected$se_cad, snps = merged_selected$ID)
+mr_ivw(MRObject)
+mr_egger(MRObject)
+mr_median(MRObject)
+
+
+####  calculating the sample size that would be needed in a randomised controlled trial to generate this odds ratio 
+
+### OR = 1.10
+
+
+library(powerMediation)
+
+
+# Run sample size calculation for continuous predictor
+SSizeLogisticCon(0.073, 1.168, 0.05, 0.9)
+
+
+
+
+
+
+#### doing it again but removing the outlying SNP
+
+
+merged <- merge(testosterone, cad_grepped, by=c("CHR", "BP"))
+
+merged <- merged[grepl("[AGTC]", merged$reference_allele), ]
+
+
+merged <- merged %>% 
+  rename(effect_allele_t = ALLELE1, 
+         other_allele_t = ALLELE0,
+         beta_t = BETA, 
+         se_t = SE,
+         effect_allele_cad = reference_allele,
+         other_allele_cad = other_allele,
+         beta_cad = male_beta,
+         se_cad = male_se)
+
+
+merged <- merged[!merged$SNP.x == "rs56196860", ]
+
+
+merged_selected <- merged %>% 
+  select(SNP.x, CHR, BP, effect_allele_t, other_allele_t, beta_t, se_t, effect_allele_cad, other_allele_cad, beta_cad,se_cad)
+
+
+merged_selected <- merged_selected %>% 
+  mutate(t_abs_beta=abs(beta_t))
+
+merged_selected <- merged_selected %>% 
+  mutate(t_inc_allele=ifelse(beta_t<0, other_allele_t, effect_allele_t))
+
+merged_selected <- merged_selected %>% 
+  mutate(cad_beta_harmonised=ifelse(effect_allele_cad!=t_inc_allele, beta_cad*-1, beta_cad))
+
+merged_selected$se_cad <- as.numeric(merged_selected$se_cad)
+IVW_weights <- merged_selected$se_cad^-2
+IVW <- lm(cad_beta_harmonised ~ t_abs_beta -1, weights = IVW_weights, data=merged_selected)
+summary(IVW)
+
+
+plot(merged_selected$t_abs_beta, merged_selected$cad_beta_harmonised)
+abline(IVW, col = "red")
+
+
+plot(merged_selected$t_abs_beta, merged_selected$cad_beta_harmonised,
+     xlab = "Testosterone", 
+     ylab = "CAD",
+     main = "MR of testosterone to DBP")
+abline(IVW, col = "red")
+
+
+
+
+cad_info <- merged_selected %>% 
+  select(ID=SNP.x, CHR, POS=BP, t_inc_allele, t_abs_beta,se_t,cad_beta_harmonised, se_cad)
+
+#### 
+
+### merging all this info
+cad_info$CHR <- as.character(cad_info$CHR)
+
+t_dbp_cad <- merge(cad_info, dbp_info, by=c("CHR", "POS"))
+# Define the weights as 1 / variance
+weights <- 1 / (t_dbp_cad$se_cad^2)
+
+# Run Weighted Least Squares regression
+mv_ivw <- lm(cad_beta_harmonised ~ t_abs_beta.x + dbp_beta_harmonised, weights = weights, data = t_dbp_cad)
+
+# Display results
+summary(mv_ivw)
+
+
+
+
+### trying for sbp instead 
+
+t_sbp_cad <- merge(sbp_info, cad_info, by="ID")
+
+# Define the weights as 1 / variance
+weights <- 1 / (t_sbp_cad$se_cad^2)
+
+# Run Weighted Least Squares regression
+mv_ivw <- lm(cad_beta_harmonised ~ t_abs_beta.x + sbp_beta_harmonised, weights = weights, data = t_sbp_cad)
+
+# Display results
+summary(mv_ivw)
+
+
+
+
+
+t_sbp_dbp_cad <- merge(cad_info, sbp_info, by="ID", all.x = TRUE)
+t_sbp_dbp_cad <- t_sbp_dbp_cad %>% 
+  select(ID, t_inc_allele=t_inc_allele.x, t_abs_beta=t_abs_beta.x, se_t=se_t.x, cad_beta_harmonised, se_cad, sbp_beta_harmonised, se_sbp)
+
+t_sbp_dbp_cad <- merge(t_sbp_dbp_cad, dbp_info, by="ID", all.x=TRUE)
+
+
+
+# Define the weights as 1 / variance
+weights <- 1 / (t_sbp_dbp_cad$se_cad^2)
+
+# Run Weighted Least Squares regression
+mv_ivw <- lm(cad_beta_harmonised ~ t_abs_beta.x + sbp_beta_harmonised + dbp_beta_harmonised, weights = weights, data = t_sbp_dbp_cad)
+
+# Display results
+summary(mv_ivw)
+
+
+
+
+
+
+
+
+#### doing for hdl and ldl even though there is probably nothing 
+
+cad_ldl <- merge(cad_info, ldl_info, by="ID")
+
+# Define the weights as 1 / variance
+weights <- 1 / (cad_ldl$se_cad^2)
+
+# Run Weighted Least Squares regression
+mv_ivw <- lm(cad_beta_harmonised ~ t_abs_beta.x + ldl_beta_harmonised, weights = weights, data = cad_ldl)
+
+# Display results
+summary(mv_ivw)
+
+
+
+
+cad_hdl <- merge(cad_info, hdl_info, by="ID")
+
+# Define the weights as 1 / variance
+weights <- 1 / (cad_hdl$se_cad^2)
+
+# Run Weighted Least Squares regression
+mv_ivw <- lm(cad_beta_harmonised ~ t_abs_beta.x + hdl_beta_harmonised, weights = weights, data = cad_hdl)
+
+# Display results
+summary(mv_ivw)
 
 
 
