@@ -40,12 +40,12 @@ allele_matching <- allele_matching %>%
   rename(
     SNP_T = "SNP",
     Effect_allele_T = "ALLELE1",
-    Reference_allele_T = "ALLELE0",
+    Other_allele_T = "ALLELE0",
     EA_FREQ_T = "A1FREQ",
     BETA_T = "BETA",
     SE_T = "SE",
-    Reference_allele_CAD = "reference_allele",
-    Effect_allele_CAD = "other_allele",
+    Effect_allele_CAD = "reference_allele",
+    Other_allele_CAD = "other_allele",
     EA_FREQ_CAD = "eaf",
     male_beta_CAD = "male_beta",
     male_se_CAD = "male_se"
@@ -54,7 +54,7 @@ allele_matching <- allele_matching %>%
 # identify trait increasing allele for Testosterone
 # here we are saying, if beta is negative, then the reference allele is the trait increasing allele, if beta is positive, then the effect allele is the trait increasing allele
 
-allele_matching$T_inc_allele <- if_else(allele_matching$BETA_T<0, allele_matching$Reference_allele_T, 
+allele_matching$T_inc_allele <- if_else(allele_matching$BETA_T<0, allele_matching$Other_allele_T, 
                                            allele_matching$Effect_allele_T)
 
 
@@ -180,7 +180,7 @@ library(MRPRESSO)
 
 allele_matching <- as.data.frame(allele_matching)
 
-mr_presso(BetaOutcome = "male_beta_CAD", BetaExposure = "BETA_T", SdOutcome = "male_se_CAD", SdExposure = "SE_T", OUTLIERtest = TRUE, DISTORTIONtest = TRUE, data = allele_matching, NbDistribution = 3000,  SignifThreshold = 0.05)
+mr_presso(BetaOutcome = "HARM_MALE_BETA_CAD", BetaExposure = "ABS_BETA_T", SdOutcome = "male_se_CAD", SdExposure = "SE_T", OUTLIERtest = TRUE, DISTORTIONtest = TRUE, data = allele_matching, NbDistribution = 3000,  SignifThreshold = 0.05)
 
 print(allele_matching)
 write.csv(allele_matching$SNP_T, "SNP_T.csv", row.names = TRUE)
@@ -194,7 +194,7 @@ allele_matching <- allele_matching[!allele_matching$SNP_T == "rs56196860", ]
 M_T_proxies_output <- M_T_proxies_output[!M_T_proxies_output$Target == "rs56196860", ]
 # identify trait increasing allele for SHBG
 
-allele_matching$T_inc_allele <- if_else(allele_matching$BETA_T<0, allele_matching$Reference_allele_T, 
+allele_matching$T_inc_allele <- if_else(allele_matching$BETA_T<0, allele_matching$Other_allele_T, 
                                         allele_matching$Effect_allele_T)
 
 allele_matching$BETA_T <- as.numeric(allele_matching$BETA_T)
@@ -243,7 +243,7 @@ mr_plot(MRObject, interactive=TRUE, labels=TRUE)
 plot(allele_matching$ABS_BETA_T, allele_matching$HARM_MALE_BETA_CAD,
      xlab = "SNP effect on Testosterone",  # Replace with your desired x-axis label
      ylab = "SNP effect on CAD",
-     main = "Male Testosterone")  # Replace with your desired y-axis label
+     main = "Male Testosterone")  
 
 M_T_proxies_output$male_se <- as.numeric(M_T_proxies_output$male_se)
 IVW_weights <- M_T_proxies_output$male_se^-2 
@@ -290,8 +290,8 @@ allele_matching <- allele_matching %>%
     A1FREQ_T = "A1FREQ",
     BETA_T = "BETA",
     SE_T = "SE",
-    reference_allele_CAD = "reference_allele",
-    other_allele_CAD = "other_allele",
+    Effect_allele_CAD = "reference_allele",
+    Other_allele_CAD = "other_allele",
     eaf_CAD = "eaf",
     female_beta_CAD = "female_beta",
     female_se_CAD = "female_se"
@@ -310,7 +310,7 @@ allele_matching$ABS_BETA_T <- abs(allele_matching$BETA_T)
 
 allele_matching$female_beta_CAD <- as.numeric(allele_matching$female_beta_CAD)
 
-allele_matching$HARM_FEMALE_BETA_CAD <- if_else(allele_matching$T_inc_allele!=allele_matching$other_allele_CAD,
+allele_matching$HARM_FEMALE_BETA_CAD <- if_else(allele_matching$T_inc_allele!=allele_matching$Effect_allele_CAD,
                                               allele_matching$female_beta_CAD*-1, allele_matching$female_beta_CAD)
 
 
@@ -407,8 +407,8 @@ allele_matching <- allele_matching %>%
     A1FREQ_SHBG = "A1FREQ",
     BETA_SHBG = "BETA",
     SE_SHBG = "SE",
-    reference_allele_CAD = "reference_allele",
-    other_allele_CAD = "other_allele",
+    Effect_allele_CAD = "reference_allele",
+    Other_allele_CAD = "other_allele",
     eaf_CAD = "eaf",
     male_beta_CAD = "male_beta",
     male_se_CAD = "male_se"
