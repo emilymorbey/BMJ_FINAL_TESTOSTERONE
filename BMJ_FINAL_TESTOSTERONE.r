@@ -427,7 +427,7 @@ allele_matching$ABS_BETA_SHBG <- abs(allele_matching$BETA_SHBG)
 
 allele_matching$male_beta_CAD <- as.numeric(allele_matching$male_beta_CAD)
 
-allele_matching$HARM_MALE_BETA_CAD <- if_else(allele_matching$SHBG_inc_allele!=allele_matching$other_allele_CAD,
+allele_matching$HARM_MALE_BETA_CAD <- if_else(allele_matching$SHBG_inc_allele!=allele_matching$Effect_allele_CAD,
                                        allele_matching$male_beta_CAD*-1, allele_matching$male_beta_CAD)
 
 
@@ -550,8 +550,8 @@ allele_matching <- allele_matching %>%
     A1FREQ_SHBG = "A1FREQ",
     BETA_SHBG = "BETA",
     SE_SHBG = "SE",
-    reference_allele_CAD = "reference_allele",
-    other_allele_CAD = "other_allele",
+    Effect_allele_CAD = "reference_allele",
+    Other_allele_CAD = "other_allele",
     eaf_CAD = "eaf",
     female_beta_CAD = "female_beta",
     female_se_CAD = "female_se"
@@ -645,7 +645,7 @@ library(MRPRESSO)
 # run the M_TESTSOTERONE_CAD script before running this 
 
 allele_matching <- as.data.frame(allele_matching)
-mr_presso(BetaOutcome = "male_beta_CAD", BetaExposure = "BETA_T", SdOutcome = "male_se_CAD", SdExposure = "SE_T", OUTLIERtest = TRUE, DISTORTIONtest = TRUE, data = allele_matching, NbDistribution = 3000,  SignifThreshold = 0.05)
+mr_presso(BetaOutcome = "HARM_MALE_BETA_CAD", BetaExposure = "ABS_BETA_T", SdOutcome = "male_se_CAD", SdExposure = "SE_T", OUTLIERtest = TRUE, DISTORTIONtest = TRUE, data = allele_matching, NbDistribution = 3000,  SignifThreshold = 0.05)
 
 
 
