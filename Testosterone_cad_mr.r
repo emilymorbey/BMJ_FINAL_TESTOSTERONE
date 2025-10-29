@@ -470,13 +470,6 @@ mr_plot(mr_allmethods(MRObject, method="ivw"))
 mr_allmethods(MRObject)
 mr_plot(mr_allmethods(MRObject))
 
-
-
-
-
-
-
-
 plot(allele_matching$ABS_BETA_SHBG, allele_matching$HARM_MALE_BETA_CAD,
      xlab = "SNP effect on SHBG",  # Replace with your desired x-axis label
      ylab = "SNP effect on CAD",
@@ -490,10 +483,7 @@ summary(inverse_weighted_LR)
 abline(inverse_weighted_LR, col = "red")
 
 
-
-
 # looking for SHBG SNP
-
 SHBG_SNPS <- allele_matching %>%
   filter(SNP_SHBG=="rs1799941")
 
@@ -533,6 +523,7 @@ text(snp_x, snp_y, snp_label, col = "blue", pos = 1, cex = 0.7)
 # HARMONISATION AND MR
 
 ##################################################################################
+
 library(tidyverse)
 library(readxl)
 library(MendelianRandomization)
@@ -544,6 +535,11 @@ F_SHBG_proxies_output <- F_SHBG_proxies_output[-1,]
 
 allele_matching <- select(F_SHBG_proxies_output, "SNP", "ALLELE1", "ALLELE0", "A1FREQ", "BETA", "SE", "reference_allele", "other_allele", "eaf", "female_beta", "female_se" )
 
+
+### removing the outlying SNP
+
+allele_matching <- allele_matching[!allele_matching$SNP == "rs56196860", ]
+
 # renaming the columns for ease of use 
 allele_matching <- allele_matching %>%
   rename(
@@ -553,8 +549,8 @@ allele_matching <- allele_matching %>%
     A1FREQ_SHBG = "A1FREQ",
     BETA_SHBG = "BETA",
     SE_SHBG = "SE",
-    Effect_allele_CAD = "reference_allele",
-    Other_allele_CAD = "other_allele",
+    effect_allele_CAD = "reference_allele",
+    other_allele_CAD = "other_allele",
     eaf_CAD = "eaf",
     female_beta_CAD = "female_beta",
     female_se_CAD = "female_se"
@@ -573,7 +569,7 @@ allele_matching$ABS_BETA_SHBG <- abs(allele_matching$BETA_SHBG)
 
 allele_matching$female_beta_CAD <- as.numeric(allele_matching$female_beta_CAD)
 
-allele_matching$HARM_FEMALE_BETA_CAD <- if_else(allele_matching$SHBG_inc_allele!=allele_matching$other_allele_CAD,
+allele_matching$HARM_FEMALE_BETA_CAD <- if_else(allele_matching$SHBG_inc_allele!=allele_matching$effect_allele_CAD,
                                               allele_matching$female_beta_CAD*-1, allele_matching$female_beta_CAD)
 
 
@@ -611,6 +607,8 @@ mr_plot(mr_allmethods(MRObject))
 
 
 
+allele_matching %>%
+  filter(SNP_SHBG=="rs1799941")
 
 
 plot(allele_matching$ABS_BETA_SHBG, allele_matching$HARM_FEMALE_BETA_CAD,
@@ -629,13 +627,54 @@ abline(inverse_weighted_LR, col = "red")
 
 
 
-# forest plot
+plot(allele_matching$ABS_BETA_SHBG, allele_matching$HARM_FEMALE_BETA_CAD, pch = 16, cex = 0.7,
+     xlab = "SNP effect on SHBG",  # Replace with your desired x-axis label
+     ylab = "SNP effect on CAD",
+     main = "Female SHBG")
 
-mr_forest(MRObject, alpha = 0.05, snp_estimates = FALSE, methods = "ivw", ordered = FALSE)
-mr_plot(MRObject, interactive=FALSE, labels=TRUE)
-  
-allele_matching %>%
-  filter(SNP_SHBG=="rs6258")
+# Add error bars
+segments(
+  x0 = allele_matching$ABS_BETA_SHBG,
+  y0 = allele_matching$HARM_FEMALE_BETA_CAD - allele_matching$female_se_CAD,
+  x1 = allele_matching$ABS_BETA_SHBG,
+  y1 = allele_matching$HARM_FEMALE_BETA_CAD + allele_matching$female_se_CAD,
+  col = "black"
+)
+
+segments(
+  x0 = allele_matching$ABS_BETA_SHBG - allele_matching$SE_SHBG, 
+  y0 = allele_matching$HARM_FEMALE_BETA_CAD,
+  x1 = allele_matching$ABS_BETA_SHBG + allele_matching$SE_SHBG, 
+  y1 = allele_matching$HARM_FEMALE_BETA_CAD,
+  col = "black"
+)
+
+# adding the lines of the different models ############################
+# IVW
+
+F_SHBG_proxies_output$female_se <- as.numeric(F_SHBG_proxies_output$female_se)
+IVW_weights <- F_SHBG_proxies_output$female_se^-2 
+inverse_weighted_LR <- lm(allele_matching$HARM_FEMALE_BETA_CAD ~ allele_matching$ABS_BETA_SHBG- 1 ,weights=IVW_weights)
+summary(inverse_weighted_LR)
+abline(inverse_weighted_LR, col="red", lwd=1.6)
+
+
+# EGGER
+abline(a = -0.004, b = -0.128, col = "blue", lty = 1, lwd=1.6)
+
+# MEDIAN 
+
+legend("topright", legend = c("IWV method", "MR-Egger method"),
+       col = c("red", "blue"), lty = c(1, 1), lwd = c(1.6, 1.6))
+
+
+
+snp_x <- 0.12
+snp_y <- -0.01
+snp_label <- "rs1799941"
+
+text(snp_x, snp_y, snp_label, col = "purple", pos = 1, cex = 0.7)
+
 
 
 #####################################    5. MR-PRESSO analysis of Testosterone to Cardiovascular Disease Risk                ########################################
@@ -649,8 +688,6 @@ library(MRPRESSO)
 
 allele_matching <- as.data.frame(allele_matching)
 mr_presso(BetaOutcome = "HARM_MALE_BETA_CAD", BetaExposure = "ABS_BETA_T", SdOutcome = "male_se_CAD", SdExposure = "SE_T", OUTLIERtest = TRUE, DISTORTIONtest = TRUE, data = allele_matching, NbDistribution = 3000,  SignifThreshold = 0.05)
-
-
 
 
 ################################### 6. MULTIVARIABLE MR FOR DISCOVERY OF POTENTIAL MEDIATORS OF TESTOSTERONE CAD RELATIONSHIP #############################################
@@ -836,8 +873,6 @@ hdl_info <- merged_selected %>%
 
 #### REPEATING FOR LDL
 
-
-
 ## reading back in the grepped info to match with the testosterone chrpos info and run the MR 
 
 ldl_grepped <- fread("/rfs/project/rfs-mpB3sSsgAn4/Studies/People/Emily/Testosterone_CAD_MR/Multivariable_MR/testosterone_snps_in_LDL_info.tsv")
@@ -852,16 +887,12 @@ ldl_grepped <- ldl_grepped %>%
   rename(CHR=CHROM,
          POS=POS_b37)
 
-
 ldl_grepped$CHR <- as.character(ldl_grepped$CHR)
-
-
 
 merged <- merge(testosterone_cluster_free_t_weights, ldl_grepped, by=c("CHR", "POS"))
 
 duplicates <- merged[duplicated(merged$ID), ]
 merged <- merged[!(merged$ID %in% merged$ID[duplicated(merged$ID)]), ]
-
 
 merged <- merged %>% 
   rename(effect_allele_t = ALLELE1.x, 
@@ -873,10 +904,8 @@ merged <- merged %>%
          beta_ldl = EFFECT_SIZE,
          se_ldl = SE.y)
 
-
 merged_selected <- merged %>% 
   select(ID, effect_allele_t, other_allele_t, beta_t, se_t, effect_allele_ldl, other_allele_ldl, beta_ldl,se_ldl)
-
 
 merged_selected <- merged_selected %>% 
   mutate(t_abs_beta=abs(beta_t))
@@ -892,7 +921,6 @@ IVW_weights <- merged_selected$se_ldl^-2
 IVW <- lm(ldl_beta_harmonised ~ t_abs_beta -1, weights = IVW_weights, data=merged_selected)
 summary(IVW)
 
-
 plot(merged_selected$t_abs_beta, merged_selected$ldl_beta_harmonised)
 abline(IVW, col = "red")
 
@@ -903,27 +931,14 @@ plot(merged_selected$t_abs_beta, merged_selected$ldl_beta_harmonised,
      main = "MR of testosterone to LDL-c")
 abline(IVW, col = "red")
 
-
-
-
-
-
 MRObject = mr_input(bx = merged_selected$t_abs_beta, bxse = merged_selected$se_t, 
                     by = merged_selected$ldl_beta_harmonised, byse = merged_selected$se_ldl, snps = merged_selected$ID)
 mr_ivw(MRObject)
 mr_egger(MRObject)
 mr_median(MRObject)
 
-
-
-
-
-
-
-
 ldl_info <- merged_selected %>% 
   select(ID, t_abs_beta,t_inc_allele, ldl_beta_harmonised, se_ldl, se_t)
-
 
 
 
@@ -947,10 +962,7 @@ tg_grepped <- tg_grepped %>%
   rename(CHR=CHROM,
          POS=POS_b37)
 
-
 tg_grepped$CHR <- as.character(tg_grepped$CHR)
-
-
 
 merged <- merge(testosterone_cluster_free_t_weights, tg_grepped, by=c("CHR", "POS"))
 
@@ -1008,154 +1020,6 @@ MRObject = mr_input(bx = merged_selected$t_abs_beta, bxse = merged_selected$se_t
 mr_ivw(MRObject)
 mr_egger(MRObject)
 mr_median(MRObject)
-
-
-
-
-
-
-
-
-ldl_info <- merged_selected %>% 
-  select(ID, t_abs_beta,t_inc_allele, ldl_beta_harmonised, se_ldl, se_t)
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-#### t2d male
-t2d_grepped <- fread("/rfs/project/rfs-mpB3sSsgAn4/Studies/People/Emily/Testosterone_CAD_MR/Multivariable_MR/testosterone_snps_in_T2D.tsv")
-t2d_grepped <- t2d_grepped %>% 
-  rename(CHR=Chr,
-         POS=Pos)
-
-
-
-t2d_grepped$CHR <- as.character(t2d_grepped$CHR)
-
-
-merged <- merge(testosterone_cluster_free_t_weights, t2d_grepped, by=c("CHR", "POS"))
-
-
-
-merged <- merged[grepl("[AGTC]", merged$EA), ]
-
-merged <- merged %>% 
-  filter(CHRPOS!="16:53822169")
-merged <- merged %>% 
-  filter(CHRPOS!="12:2908330")
-merged <- merged %>% 
-  filter(ID!="rs2594948")
-
-
-
-merged <- merged %>% 
-  rename(effect_allele_t = Trait_raising, 
-         other_allele_t = Other_allele,
-         beta_t = Weight, 
-         se_t = SE_weight,
-         effect_allele_t2d = EA,
-         other_allele_t2d = NEA,
-         beta_t2d =  Beta,
-         se_t2d = SE.y)
-
-
-merged_selected <- merged %>% 
-  select(ID, effect_allele_t, other_allele_t, beta_t, se_t, effect_allele_t2d, other_allele_t2d, beta_t2d,se_t2d)
-
-
-merged_selected <- merged_selected %>% 
-  mutate(t_abs_beta=abs(beta_t))
-
-merged_selected <- merged_selected %>% 
-  mutate(t_inc_allele=ifelse(beta_t<0, other_allele_t, effect_allele_t))
-
-merged_selected <- merged_selected %>% 
-  mutate(t2d_beta_harmonised=ifelse(effect_allele_t2d!=t_inc_allele, beta_t2d*-1, beta_t2d))
-
-merged_selected$se_t2d <- as.numeric(merged_selected$se_t2d)
-IVW_weights <- merged_selected$se_t2d^-2
-IVW <- lm(t2d_beta_harmonised ~ t_abs_beta -1, weights = IVW_weights, data=merged_selected)
-summary(IVW)
-
-
-plot(merged_selected$t_abs_beta, merged_selected$t2d_beta_harmonised)
-abline(IVW, col = "red")
-
-
-plot(merged_selected$t_abs_beta, merged_selected$t2d_beta_harmonised,
-     xlab = "Testosterone", 
-     ylab = "SBP",
-     main = "MR of testosterone to SBP")
-abline(IVW, col = "red")
-
-
-
-
-
-
-MRObject = mr_input(bx = merged_selected$t_abs_beta, bxse = merged_selected$se_t, 
-                    by = merged_selected$t2d_beta_harmonised, byse = merged_selected$se_t2d, snps = merged_selected$ID)
-mr_ivw(MRObject)
-mr_egger(MRObject)
-mr_median(MRObject)
-
-
-
-
-# devtools::install_github("rondolab/MR-PRESSO", force = TRUE)
-library(MRPRESSO)
-
-# run the M_TESTSOTERONE_CAD script before running this 
-
-merged_selected <- as.data.frame(merged_selected)
-mr_presso(BetaOutcome = "t2d_beta_harmonised", BetaExposure = "t_abs_beta", SdOutcome = "se_t", SdExposure = "se_t2d", OUTLIERtest = TRUE, DISTORTIONtest = TRUE, data = merged_selected, NbDistribution = 4000,  SignifThreshold = 0.05)
-
-
-
-### removing outliers and performing analysis again 
-
-merged <- merged[!merged$SNP.x == "rs56196860", ]
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-t2d_info <- merged_selected %>% 
-  select(ID, t_abs_beta,t_inc_allele, sbp_beta_harmonised, se_sbp, se_t)
-
-
-
-
-
-
-
 
 
 
@@ -1223,20 +1087,11 @@ plot(merged_selected$t_abs_beta, merged_selected$dbp_beta_harmonised,
 abline(IVW, col = "red")
 
 
-
-
-
-
 MRObject = mr_input(bx = merged_selected$t_abs_beta, bxse = merged_selected$se_t, 
                     by = merged_selected$dbp_beta_harmonised, byse = merged_selected$se_dbp, snps = merged_selected$ID)
 mr_ivw(MRObject)
 mr_egger(MRObject)
 mr_median(MRObject)
-
-
-
-
-
 
 dbp_info <- merged_selected %>% 
   select(ID, CHR,POS, t_abs_beta,t_inc_allele, dbp_beta_harmonised, se_dbp, se_t)
@@ -1254,15 +1109,12 @@ sbp_grepped <- sbp_grepped %>%
 
 sbp_grepped$CHR <- as.character(sbp_grepped$CHR)
 
-
 merged <- merge(testosterone_cluster_free_t_weights, sbp_grepped, by=c("CHR", "POS"))
-
 merged <- merged[grepl("[AGTC]", merged$effect_allele), ]
 
 merged <- merged[!merged$ID == "rs56196860", ]
 duplicates <- merged[duplicated(merged$ID), ]
 merged <- merged[!(merged$ID %in% merged$ID[duplicated(merged$ID)]), ]
-
 
 merged <- merged %>% 
   rename(effect_allele_t = ALLELE1, 
@@ -1278,7 +1130,6 @@ merged <- merged %>%
 merged_selected <- merged %>% 
   select(ID, effect_allele_t, other_allele_t, beta_t, se_t, effect_allele_sbp, other_allele_sbp, beta_sbp,se_sbp)
 
-
 merged_selected <- merged_selected %>% 
   mutate(t_abs_beta=abs(beta_t))
 
@@ -1293,21 +1144,14 @@ IVW_weights <- merged_selected$se_sbp^-2
 IVW <- lm(sbp_beta_harmonised ~ t_abs_beta -1, weights = IVW_weights, data=merged_selected)
 summary(IVW)
 
-
 plot(merged_selected$t_abs_beta, merged_selected$sbp_beta_harmonised)
 abline(IVW, col = "red")
-
 
 plot(merged_selected$t_abs_beta, merged_selected$sbp_beta_harmonised,
      xlab = "Testosterone", 
      ylab = "SBP",
      main = "MR of testosterone to SBP")
 abline(IVW, col = "red")
-
-
-
-
-
 
 MRObject = mr_input(bx = merged_selected$t_abs_beta, bxse = merged_selected$se_t, 
                     by = merged_selected$sbp_beta_harmonised, byse = merged_selected$se_sbp, snps = merged_selected$ID)
@@ -1317,37 +1161,17 @@ mr_median(MRObject)
 
 
 
-
-
-sbp_info <- merged_selected %>% 
-  select(ID, t_abs_beta,t_inc_allele, sbp_beta_harmonised, se_sbp, se_t)
-
-
-
-
-
 #### multivariable MR with DBP
 
 
 ### need to pull out the CAD info 
 
-
-#### it is actually blood pressure that is the likely mediator so we need to look at that
-## also looked up on chromosome and position info 
-
-
-
-
-
 testosterone <- fread("/rfs/project/rfs-mpB3sSsgAn4/Studies/People/Emily/Testosterone_CAD_MR/Multivariable_MR/testosterone_cluster_with_chrpos_free_t_weights.tsv")
 cad_grepped <- fread("/rfs/project/rfs-mpB3sSsgAn4/Studies/People/Emily/Testosterone_CAD_MR/Multivariable_MR/testosterone_snps_in_cad_with_proxies.tsv")
 
 
-
 merged <- merge(testosterone, cad_grepped, by=c("CHR", "BP"))
-
 merged <- merged[grepl("[AGTC]", merged$reference_allele), ]
-
 merged <- merged %>% 
   filter(SNP.x!="rs56196860")
 
@@ -1363,11 +1187,8 @@ merged <- merged %>%
          se_cad = male_se)
 
 
-
-
 merged_selected <- merged %>% 
   select(SNP.x, CHR, BP, effect_allele_t, other_allele_t, beta_t, se_t, effect_allele_cad, other_allele_cad, beta_cad,se_cad)
-
 
 merged_selected <- merged_selected %>% 
   mutate(t_abs_beta=abs(beta_t))
@@ -1396,9 +1217,6 @@ abline(IVW, col = "red")
 
 
 
-
-
-
 MRObject = mr_input(bx = merged_selected$t_abs_beta, bxse = merged_selected$se_t, 
                     by = merged_selected$cad_beta_harmonised, byse = merged_selected$se_cad, snps = merged_selected$ID)
 mr_ivw(MRObject)
@@ -1418,11 +1236,7 @@ library(powerMediation)
 SSizeLogisticCon(0.073, 1.168, 0.05, 0.9)
 
 
-
-
-
-
-#### doing it again but removing the outlying SNP
+### doing it again but removing the outlying SNP
 
 
 merged <- merge(testosterone, cad_grepped, by=c("CHR", "BP"))
@@ -1474,8 +1288,6 @@ plot(merged_selected$t_abs_beta, merged_selected$cad_beta_harmonised,
 abline(IVW, col = "red")
 
 
-
-
 cad_info <- merged_selected %>% 
   select(ID=SNP.x, CHR, POS=BP, t_inc_allele, t_abs_beta,se_t,cad_beta_harmonised, se_cad)
 
@@ -1510,17 +1322,11 @@ mv_ivw <- lm(cad_beta_harmonised ~ t_abs_beta.x + sbp_beta_harmonised, weights =
 # Display results
 summary(mv_ivw)
 
-
-
-
-
 t_sbp_dbp_cad <- merge(cad_info, sbp_info, by="ID", all.x = TRUE)
 t_sbp_dbp_cad <- t_sbp_dbp_cad %>% 
   select(ID, t_inc_allele=t_inc_allele.x, t_abs_beta=t_abs_beta.x, se_t=se_t.x, cad_beta_harmonised, se_cad, sbp_beta_harmonised, se_sbp)
 
 t_sbp_dbp_cad <- merge(t_sbp_dbp_cad, dbp_info, by="ID", all.x=TRUE)
-
-
 
 # Define the weights as 1 / variance
 weights <- 1 / (t_sbp_dbp_cad$se_cad^2)
@@ -1538,7 +1344,7 @@ summary(mv_ivw)
 
 
 
-#### doing for hdl and ldl even though there is probably nothing 
+#### HDL and LDLD
 
 cad_ldl <- merge(cad_info, ldl_info, by="ID")
 
@@ -1550,9 +1356,6 @@ mv_ivw <- lm(cad_beta_harmonised ~ t_abs_beta.x + ldl_beta_harmonised, weights =
 
 # Display results
 summary(mv_ivw)
-
-
-
 
 cad_hdl <- merge(cad_info, hdl_info, by="ID")
 
@@ -1708,8 +1511,6 @@ names(icd10_dates)[names(icd10_dates) == "eid"] <- "IID"
 
 ## phenotypes 1 contains the list of participants and their icd10 and icd9
 ## diagnoses 
-## there are very few ICD9 diagnoses because they are an older form
-## i believe ICD9 codes were just used in scotland
 ## phenotypes 2 has testosterone levels 
 ## also has all of the recorded operations for these individuals 
 ## and any self reported illness 
@@ -1803,8 +1604,6 @@ phenotypes_all <- phenotypes_all %>%
 
 ## now we are going to find out what the dates of these operations were
 ## this is using a similar method as we used for the ICD10 data
-
-
 ## this file has data on the operations of each individual and when these operations
 ## happened
 
@@ -1865,9 +1664,7 @@ phenotypes_all$CAD_OP <- as.numeric(phenotypes_all$CAD_OP)
 phenotypes_all$CADBIN <- as.numeric(rowSums(phenotypes_all[, c("CAD_ICD10", "CAD_OP", "CAD_ICD9")]) > 0)
 
 
-
-
-## now we are merging the earliest CAD date column from the ICD_10 data 
+## merging the earliest CAD date column from the ICD_10 data 
 ## and the operation date for those who had the operation, and selecting the 
 ## first instance
 
@@ -1876,7 +1673,7 @@ phenotypes_all$earliest_cad_date_all <- pmin(phenotypes_all$earliest_cad_date,
 
 
 
-## then checking if there is anyone that does not have cad and has a date suggesting 
+## checking if there is anyone that does not have cad and has a date suggesting 
 ## they have cad 
 
 sum(any(phenotypes_all$CADBIN == 0 & !is.na(phenotypes_all$earliest_cad_date_all)))
@@ -1905,7 +1702,7 @@ colnames(surv)
 # otherwise, leave as 0 - now we have a binary column which says whether 
 # someone was lost to follow up or not
 
-surv$LTFBIN <- ifelse(surv$LTF == "" ,0,1)
+surv$LTFBIN <- ifelse(surv$LTF == "",0,1)
 
 # adding censoring date as the current date 
 surv$censdate <- Sys.Date()
@@ -1936,8 +1733,7 @@ surv <- merge(surv, dates, by = "IID")
 
 names(surv)[names(surv) == "Date.of.attending.assessment.centre...Instance.0"] <- "ASSESSMENT_DATE"
 
-
-# creating a year of recruitment variable - this will be inaccurate 
+# creating a year of recruitment variable 
 surv$year_of_recruitment <- year(surv$ASSESSMENT_DATE)
 
 # creating a time to event variable
@@ -1962,20 +1758,13 @@ surv <- surv[!duplicated(surv$IID), ]
 
 surv$timetoCAD2 <- difftime(surv$earliest_cad_date_all, surv$timetoEVENT, units = "weeks")
 
-
 # select relevant columns 
-
 surv_key_variables <- surv %>% select("IID", "T", "CADBIN",
                                       "timetoEVENT")
 
 
-# writing this surv file out so it can be used in the RAP to run the actual
-# models
 
 write.csv(surv_key_variables, "CAD_SURV.csv", row.names = TRUE)
-
-
-
 # reading in the surv file that we have just written out 
 # and removing some redundant columns 
 
@@ -1996,13 +1785,9 @@ sociodemographics <- read.csv("sociodemographics_participant.csv")
 other_illness <- read.csv("other_diseases_participant.csv")
 
 
-
-
 ###### DIABETES ################################################################
 
 diabetes <- read.csv("diabetes3_participant.csv")
-
-
 colnames(diabetes) <- c("IID", "SELFREPORT", "MEDICATION", "DOCTOR", "HBA1C", "ICD10", "ICD9")
 
 
@@ -2012,7 +1797,6 @@ diabetes <- diabetes %>%
   mutate(TYPE1DIAB = if_else(grepl("E10|O240", diabetes$ICD10) | 
                                grepl("1222", diabetes$SELFREPORT)|
                                grepl("25001|25011|25021|25031|25041|25051|25061|25071|25081|25091|25003|25013|25023|25033|25043|25053|25063|25073|25083|25093", diabetes$ICD9), 1, 0))
-
 table(diabetes$TYPE1DIAB)
 
 
@@ -2045,7 +1829,6 @@ other_illness <- other_illness %>%
                                grepl("1464", other_illness$SELFREPORT)|
                                grepl("714", other_illness$ICD9), 1, 0))
 
-
 ##### afib 
 
 other_illness <- other_illness %>%
@@ -2053,25 +1836,18 @@ other_illness <- other_illness %>%
                           grepl("1471|1483", other_illness$SELFREPORT)|
                           grepl("4273|4720", other_illness$ICD9), 1, 0))
 
-
 ##### chronic kidney disease
 
 other_illness <- other_illness %>%
   mutate(KIDNEY_DISEASE = if_else(grepl("N183|N184|N185", other_illness$ICD10) | 
                                     grepl("1192|1519|1609", other_illness$SELFREPORT)|
                                     grepl("5853|5855|5810|5820|5900|V420|V451", other_illness$ICD9), 1, 0))
-
-
-
-
 ##### migraine
 
 other_illness <- other_illness %>%
   mutate(MIGRAINE = if_else(grepl("G43|G440|N943", other_illness$ICD10) | 
                               grepl("1265", other_illness$SELFREPORT)|
                               grepl("346", other_illness$ICD9), 1, 0))
-
-
 ##### SLE 
 
 other_illness <- other_illness %>%
@@ -2079,17 +1855,12 @@ other_illness <- other_illness %>%
                          grepl("1381", other_illness$SELFREPORT)|
                          grepl("7100", other_illness$ICD9), 1, 0))
 
-
-
 ##### MENTAL ILLNESS
 
 other_illness <- other_illness %>%
   mutate(MENTAL_ILLNESS = if_else(grepl("F03|F068|F09|F20|F22|F23|F259|F28|F29|F31|F39|F53|F333", other_illness$ICD10) | 
                                     grepl("1289|1291", other_illness$SELFREPORT)|
                                     grepl("295|298|296", other_illness$ICD9), 1, 0))
-
-
-
 ##### ED
 
 other_illness <- other_illness %>%
@@ -2132,8 +1903,6 @@ medications <- medications %>%
 
 
 ##### corticosteroids 
-
-
 medications <- medications %>%
   mutate(CORTICOSTEROIDS = if_else(grepl("1140874790|1140874816|
 1140874896.00|1140874930|1140874976|1141145782|1141173346", medications$MEDICATION) , 1, 0))
@@ -2141,23 +1910,13 @@ medications <- medications %>%
 
 table(medications$CORTICOSTEROIDS)
 
-
-
 ##### antipsychotics 
-
-
 medications <- medications %>%
   mutate(ANTIPSYCHOTICS = if_else(grepl("1140867420|1140867444|1140927956|
                                         1140928916|1141152848|1141153490|
                                         1141169714|1141195974", medications$MEDICATION) , 1, 0))
 
-
 table(medications$ANTIPSYCHOTICS)
-
-
-
-
-
 
 
 # SOCIODEMOGRAPHIC VARIABLES 
@@ -2167,16 +1926,12 @@ sociodemographics <- read.csv("sociodemographics_participant.csv")
 
 ### smoking
 
-
-# smoking - this one is more tricky 
-
 sociodemographics$exsmoker <- ifelse(sociodemographics$Ever.smoked...Instance.0 == "1" & sociodemographics$Current.tobacco.smoking...Instance.0=="0" ,"2",NA)
 sociodemographics$nonsmoker <- ifelse(sociodemographics$Ever.smoked...Instance.0 == "0" ,"1",NA)
 sociodemographics$NUM_CIGS_DAILY <- as.numeric(sociodemographics$Number.of.cigarettes.currently.smoked.daily..current.cigarette.smokers....Instance.0)
 sociodemographics$SmokingCategory <- ifelse(sociodemographics$NUM_CIGS_DAILY < 10 & sociodemographics$NUM_CIGS_DAILY > 0, "3",
                                             ifelse(sociodemographics$NUM_CIGS_DAILY >= 10 & sociodemographics$NUM_CIGS_DAILY < 20, "4", 
                                                    ifelse(sociodemographics$NUM_CIGS_DAILY >= 20, "5", NA)))
-
 
 
 # Remove NA values and replace with empty strings
@@ -2186,8 +1941,6 @@ sociodemographics$SmokingCategory[is.na(sociodemographics$SmokingCategory)] <- "
 
 # Combine columns into UKBBSMOKING with no white space
 sociodemographics$UKBBSMOKING <- paste0(sociodemographics$exsmoker, sociodemographics$nonsmoker, sociodemographics$SmokingCategory)
-
-
 sociodemographics$UKBBSMOKING <- as.factor(sociodemographics$UKBBSMOKING)
 
 sociodemographics %>%
@@ -2195,10 +1948,6 @@ sociodemographics %>%
                               levels = c("","1","2","3","4","5")))
 
 sociodemographics <- sociodemographics %>% select(-"nonsmoker", -"SmokingCategory", -"NUM_CIGS_DAILY")
-
-
-
-
 
 colnames(sociodemographics) <- c("IID", "AGERECRUIT", "MONTHBIRTH", "YEARBIRTH", "DEPRIVATION", "LOST_TO_FOLLOW_UP", "ETHNICITY", 
                                  "BMI", "EVERSMOKED", "SMOKINGSTATUS", "CURRENTSMOKING", "CIGSDAILY", "SBP1", "DATEASSESSMENT", 
@@ -2218,28 +1967,15 @@ names(sociodemographics)[invalid_columns] <- paste0("InvalidName", seq_along(inv
 sociodemographics <- sociodemographics %>%
   mutate(SBP = (SBP1 + SBP2) / 2)
 
-
 sociodemographics <- sociodemographics %>%
   rowwise() %>%
   mutate(SBP_SD = sd(c(SBP1, SBP2))) %>%
   ungroup()
 
-
-
-
-
-
-
 ##### CHOLESTEROL HDL RATIO
-
 
 sociodemographics <- sociodemographics %>%
   mutate(CHOLESTEROLTOHDL = CHOLESTEROL / HDL)
-
-
-
-
-
 
 ##### ethnicity 
 
@@ -2258,8 +1994,6 @@ sociodemographics <- sociodemographics %>%
     TRUE ~ NA_real_  # Default case, if none of the conditions match
   ))
 
-
-
 sociodemographics <- sociodemographics %>%
   mutate(ETHNICITY_CATEGORY = factor(ETHNICITY_CATEGORY, levels = 1:9, labels = c(
     "White or not stated",
@@ -2275,7 +2009,6 @@ sociodemographics <- sociodemographics %>%
 
 
 
-
 ##### ill family member
 
 sociodemographics <- sociodemographics %>%
@@ -2283,8 +2016,6 @@ sociodemographics <- sociodemographics %>%
     grepl("\\b1\\b", ILLFATH) | grepl("\\b1\\b", ILLMOTH) | grepl("\\b1\\b", ILLSIBS),
     1, 0
   ))
-
-
 
 #### selecting the important variables before merging 
 
@@ -2303,8 +2034,6 @@ COVARIATES <- merge(COVARIATES, sociodemographics, by = "IID")
 ###### merging with the survival data
 
 COMPLETE_DATA <- merge(surv, COVARIATES, by = "IID")
-
-
 COMPLETE_DATA <- COMPLETE_DATA %>% select(-c("CIGSDAILY"))
 COMPLETE_DATA <- COMPLETE_DATA %>% select(-c("EXSMOKER"))
 COMPLETE_DATA <- COMPLETE_DATA %>% select(-c("ICD10", "ICD9"))
@@ -2322,29 +2051,17 @@ COMPLETE_DATA <- COMPLETE_DATA[!duplicated(COMPLETE_DATA$IID), ]
 
 
 REMOVE_CAD_PRIOR_TO_ASSESSMENT <- merge(surv_with_dates, COMPLETE_DATA, by = "IID")
-
-
 REMOVE_CAD_PRIOR_TO_ASSESSMENT$DATEASSESSMENT.x <- as.Date(REMOVE_CAD_PRIOR_TO_ASSESSMENT$DATEASSESSMENT.x)
 
 table(REMOVE_CAD_PRIOR_TO_ASSESSMENT$earliest_cad_date_all <= REMOVE_CAD_PRIOR_TO_ASSESSMENT$DATEASSESSMENT.x)
-
 table(REMOVE_CAD_PRIOR_TO_ASSESSMENT$CADBIN.x)
-
-
-
 dates <- read.csv("attendance_participant.csv")
-
 names(dates)[names(dates) == "Participant.ID"] <- "IID"
-
 dat <- merge(REMOVE_CAD_PRIOR_TO_ASSESSMENT, dates, by = "IID")
-
 names(dat)[names(dat) == "Date.of.attending.assessment.centre...Instance.0"] <- "ASSESSMENT_DATE"
-
 
 cleaned_data <- dat %>%
   filter(is.na(earliest_cad_date_all) | is.na(ASSESSMENT_DATE) | earliest_cad_date_all >= ASSESSMENT_DATE)
-
-
 
 cleaned_data <- cleaned_data %>% select(-c("MONTHBIRTH.x"))
 cleaned_data <- cleaned_data %>% select(-c("YEARBIRTH.x"))
@@ -2365,17 +2082,14 @@ cleaned_data <- cleaned_data %>% select(-c("YEARBIRTH.y"))
 
 table(cleaned_data$ASSESSMENT_DATE > cleaned_data$earliest_cad_date_all)
 
-
 cleaned_data$got_CAD <- !is.na(cleaned_data$earliest_cad_date_all)
 cleaned_data$date_comparison <- ifelse(cleaned_data$got_CAD, 
                                        ifelse(cleaned_data$earliest_cad_date_all < cleaned_data$ASSESSMENT_DATE, "Before", "After"),
                                        NA)
 
-
 # Count the number of participants who never got CAD
 num_na_CAD <- sum(is.na(cleaned_data$earliest_cad_date_all))
 sum(cleaned_data$CADBIN.x==1)
-
 
 table(cleaned_data$date_comparison, useNA = "ifany")
 
@@ -2383,61 +2097,24 @@ write.csv(cleaned_data, file = "COMPLETE_SURV_DATA-NEW.csv", row.names = TRUE)
 
 
 
-
-
-
-
-
 cleaned_data <- read.csv("COMPLETE_SURV_DAT-NEW.csv")
-
-
 cleaned_data <- cleaned_data %>% select(-c("earliest_cad_date_all"))
 cleaned_data <- cleaned_data %>% select(-c("date_comparison"))
 
+### complete case analysis
 
 complete_data <- cleaned_data[complete.cases(cleaned_data), ]
-
 nrow(complete_data)
-
 qrisksurv <- complete_data
-
 names(qrisksurv)[names(qrisksurv) == "T.x"] <- "T"
 names(qrisksurv)[names(qrisksurv) == "CADBIN.x"] <- "CADBIN"
 
 
 # fixing the ethnicity labelling 
-
-
-
 unique(complete_data$ETHNICITY_CATEGORY)
-
 table(complete_data$ETHNICITY_CATEGORY)
-
 complete_data$ETHNICITY_CATEGORY <- as.factor(complete_data$ETHNICITY_CATEGORY)
-
-
 complete_data$ETHNICITY_CATEGORY <- relevel(complete_data$ETHNICITY_CATEGORY, ref = "White or not stated")
-
-
-
-# creating quartiles of the testosterone distribution
-
-quartiles <- quantile(qrisksurv$T, probs = c(0, 0.25, 0.5, 0.75, 1), na.rm = TRUE)
-qrisksurv$testosterone_quartile <- cut(qrisksurv$T, breaks = quartiles,
-                                       labels = c("lower", "lower middle", "upper middle", "upper"),
-                                       include.lowest = TRUE)
-
-
-
-
-
-
-# age categories 
-
-qrisksurv$age_group <- cut(qrisksurv$AGERECRUIT.x,
-                           breaks = c(40, 45, 50, 55, 60, 65, 70, Inf),
-                           labels = c("40-45", "45-50", "50-55", "55-60", "60-65", "65-70", "70+"),
-                           right = FALSE)
 
 
 complete_data <- qrisksurv
@@ -2450,41 +2127,26 @@ complete_data <- qrisksurv
 complete_data$UKBBSMOKING <- factor(complete_data$UKBBSMOKING, levels = c("1", "2", "3", "4", "5"))
 complete_data$UKBBSMOKING <- relevel(complete_data$UKBBSMOKING, ref = "1")
 
-# deficient, sufficient, and high groups 
-
-# Define cutoff points and labels
-cut_points <- c(-Inf, 12, 18, 25, 30)
-labels <- c("deficient", "sufficient", "high", "very high")
-
 # Create categorical variable for testosterone categories
 complete_data$testosterone_category <- cut(complete_data$T, breaks = cut_points, labels = labels, include.lowest = TRUE)
-
 complete_data$testosterone_category <- relevel(complete_data$testosterone_category, ref = "sufficient")
 
 
 
 
 # SURVIVAL ANALYSIS 
-
-
-
 # making adjustments - just looking at deficient and sufficient 
-
 complete_data$testosterone_binary <- ifelse(complete_data$T < 12, "deficient", "sufficient")
-
 complete_data$testosterone_binary<- factor(complete_data$testosterone_binary, levels = c("deficient", "sufficient"))
 
-# Reorder levels so that "deficient" is the reference category
+# Reorder levels so that "deficient" is the exposure - we want to measure deficient effects compared to sufficient
 complete_data$testosterone_binary <- relevel(complete_data$testosterone_binary, ref = "sufficient")
-
 
 # Create survival object
 CADsurv <- Surv(time = complete_data$timetoEVENT, event = complete_data$CADBIN)
 
 # Fit Kaplan-Meier survival curves
 km_fit <- survfit(CADsurv ~ testosterone_binary, data = complete_data)
-
-
 
 plot(
   km_fit,
@@ -2521,7 +2183,6 @@ for (age_group in age_groups) {
 
 # View results
 print(results)
-
 write.csv(results, "cardiovascular_disease_rates.csv", row.names = FALSE)
 
 
@@ -2600,8 +2261,6 @@ cox <- coxph(CADsurv~complete_data$testosterone_binary+complete_data$FAMHISTORY)
 summary(cox) 
 
 
-
-
 # Define a function to extract Cox model results from the summary
 extract_cox_summary <- function(model, model_name) {
   summary_model <- summary(model)
@@ -2671,9 +2330,6 @@ cox <- coxph(
 
 # Summarize the model
 summary(cox)
-
-
-
 cox_summary <- summary(cox)
 
 
@@ -2685,258 +2341,4 @@ results <- data.frame(
 )
 
 write.csv(results, file = "cox_model_results.csv", row.names = TRUE)
-
-
-
-### now having a LOOK AT THE DISTRIBUTION BY DECILES ############################
-
-complete_data <- complete_data %>%
-  mutate(testosterone_decile = ntile(T, 10))
-
-complete_data <- complete_data %>%
-  mutate(testosterone_decile = ntile(T, 10)) %>%
-  mutate(testosterone_decile = factor(testosterone_decile)) %>%
-  mutate(testosterone_decile = fct_relevel(testosterone_decile, "7"))
-
-
-# Check the factor levels to confirm releveling
-levels(complete_data$testosterone_decile)
-
-
-decile_ranges <- complete_data %>%
-  group_by(testosterone_decile) %>%
-  summarise(
-    min_value = min(T),
-    max_value = max(T),
-    .groups = 'drop'
-  )
-
-
-# Create survival object
-CADsurv <- Surv(time = complete_data$timetoEVENT, event = complete_data$CADBIN)
-
-# Fit Kaplan-Meier survival curves
-km_fit <- survfit(CADsurv ~ testosterone_decile + AGERECRUIT.x, data = complete_data)
-
-print(km_fit)
-
-
-
-cox_model <- coxph(CADsurv~testosterone_decile+AGERECRUIT.x, data = complete_data)
-summary_cox <- summary(cox_model)
-
-
-
-
-# Extracting the coefficients table
-coef_table <- summary_cox$coefficients
-
-# Extracting the confidence intervals
-conf_int <- summary_cox$conf.int
-
-# Creating the dataframe
-results_df <- data.frame(
-  coef = coef_table[, "coef"],
-  exp_coef = coef_table[, "exp(coef)"],
-  se_coef = coef_table[, "se(coef)"],
-  z = coef_table[, "z"],
-  Pr_z = coef_table[, "Pr(>|z|)"],
-  exp_coef_lower_95 = conf_int[, "lower .95"],
-  exp_coef_upper_95 = conf_int[, "upper .95"]
-)
-
-# Adding row names
-rownames(results_df) <- rownames(coef_table)
-
-# Display the dataframe
-print(results_df)
-
-
-
-write.csv(results_df, file = "decile_stratified.csv", row.names = TRUE)
-
-
-
-
-### now having a LOOK AT THE DISTRIBUTION BY QUARTILES ############################
-
-
-complete_data$testosterone_quartile <- factor(complete_data$testosterone_quartile, 
-                                              levels = c("upper", "lower", "lower middle", "upper middle"))
-
-# Check the factor levels to confirm releveling
-levels(complete_data$testosterone_quartile)
-
-
-# Create survival object
-CADsurv <- Surv(time = complete_data$timetoEVENT, event = complete_data$CADBIN)
-
-# Fit Kaplan-Meier survival curves
-km_fit <- survfit(CADsurv ~ testosterone_quartile, data = complete_data)
-
-
-
-
-
-cox_model <- coxph(CADsurv~testosterone_quartile + AGERECRUIT.x, data = complete_data)
-summary_cox <- summary(cox_model)
-
-
-
-
-# Extracting the coefficients table
-coef_table <- summary_cox$coefficients
-
-# Extracting the confidence intervals
-conf_int <- summary_cox$conf.int
-
-# Creating the dataframe
-results_df <- data.frame(
-  coef = coef_table[, "coef"],
-  exp_coef = coef_table[, "exp(coef)"],
-  se_coef = coef_table[, "se(coef)"],
-  z = coef_table[, "z"],
-  Pr_z = coef_table[, "Pr(>|z|)"],
-  exp_coef_lower_95 = conf_int[, "lower .95"],
-  exp_coef_upper_95 = conf_int[, "upper .95"]
-)
-
-# Adding row names
-rownames(results_df) <- rownames(coef_table)
-
-# Display the dataframe
-print(results_df)
-
-
-
-write.csv(results_df, file = "quartile_stratified.csv", row.names = TRUE)
-
-
-
-
-
-####### READING IN THE RESULTS FROM THE RAP TO CREATE SOME PLOTS ######
-
-person_years <- read.csv("TestosteroneCAD/Data_from_RAP/cardiovascular_disease_rates.csv")
-cox_model_all_mediators <- read.csv("TestosteroneCAD/Data_from_RAP/cox_model_results.csv")
-cox_model_stratified <- read.csv("TestosteroneCAD/Data_from_RAP/combined_cox_model_results.csv")
-quartile_stratified <- read.csv("TestosteroneCAD/Data_from_RAP/quartile_stratified.csv")
-clinical <- read.csv("TestosteroneCAD/Data_from_RAP/clinical_T_cox.csv")
-decile_stratified <- read.csv("TestosteroneCAD/Data_from_RAP/decile_stratified.csv")
-
-##### PLOTTING THE CAD HAZARDS FOR TESTOSTERONE QUARTILES IN THE WHOLE 
-#### POPULATION 
-
-names(quartile_stratified)[names(quartile_stratified) == "X"] <- "T_QUARTILE"
-print(quartile_stratified)
-
-
-# Reorder the factor levels for T_QUARTILE
-quartile_stratified$T_QUARTILE <- factor(quartile_stratified$T_QUARTILE,
-                                         levels = c("lower", "lower middle", "upper middle", "upper"))
-
-# Custom colors for testosterone quartiles
-testosterone_colors <- c("lower" = "#66c2a5", "lower middle" = "#fc8d62", "upper middle" = "#8da0cb", "upper" = "#e78ac3")
-
-# Create the forest plot without a legend
-plot <- ggplot(quartile_stratified, aes(x = T_QUARTILE, y = exp_coef, ymin = exp_coef_lower_95, ymax = exp_coef_upper_95, color = T_QUARTILE)) +
-  geom_point(position = position_dodge(width = 0.3), size = 4) +
-  geom_errorbar(position = position_dodge(width = 0.6), width = 0.2) +
-  labs(title = "Hazard Ratios of CAD by Testosterone Quartile",
-       x = "Testosterone Quartile",
-       y = "Hazard Ratio of CAD") +
-  scale_color_manual(values = testosterone_colors, guide = FALSE) +  # Use custom colors without legend
-  theme_minimal() +
-  theme(axis.text.y = element_text(size = 12),
-        axis.text.x = element_text(size = 12),
-        axis.title.x = element_text(size=14),
-        axis.title.y = element_text(size = 14)) +
-  geom_hline(yintercept = 1, linetype = "dashed", color = "black") +  # Add a line at HR = 1 (null effect)
-  theme(panel.grid.major.x = element_blank(),
-        panel.grid.minor.x = element_blank(),
-        axis.text.x = element_text(angle = 45, hjust = 1))
-
-
-print(plot)
-
-ggsave("forest_plot_quartiles.png", plot = plot, width = 8, height = 6, dpi = 300)
-
-
-##### PLOTTING THE CAD HAZARDS FOR TESTOSTERONE DECILES IN THE WHOLE 
-#### POPULATION 
-head(decile_stratified)
-print(decile_stratified)
-
-decile_stratified$X <- factor(decile_stratified$X,
-                              levels = c("0.4-7.7", "7.7-8.9", "8.9-9.9", 
-                                         "9.9-10.7", "10.7-11.6", "11.6-12.5", "12.5-13.5",
-                                         "13.5-14.8", "14.8-16.7", "16.7-53.1"))
-
-print(decile_stratified)
-
-library(ggplot2)
-
-
-plot <- ggplot(decile_stratified, aes(x = X, y = exp_coef, ymin = exp_coef_lower_95, ymax = exp_coef_upper_95)) +
-  # Add colored points
-  geom_point(aes(color = X), position = position_dodge(width = 0.3), size = 4, color="royalblue") +
-  # Add black error bars
-  geom_errorbar(color = "black", position = position_dodge(width = 1.2), width = 0.4) +
-  labs(x = "Testosterone Deciles (nmol/L)",
-       y = "CAD Hazard Ratio") +
-  theme_minimal() +
-  theme(axis.text.y = element_text(size = 16),
-        axis.text.x = element_text(size = 16),
-        axis.title.x = element_text(size=18),
-        axis.title.y = element_text(size = 18),
-        legend.position = "none") +
-  geom_hline(yintercept = 1, linetype = "dashed", color = "black") +  # Add a line at HR = 1 (null effect)
-  theme(panel.grid.major.x = element_blank(),
-        panel.grid.minor.x = element_blank(),
-        axis.text.x = element_text(angle = 45, hjust = 1)) +
-  scale_color_viridis_d()  # Apply the viridis color scale
-
-print(plot)
-
-
-
-ggsave("forest_plot_deciles.png", plot = plot, width = 8, height = 6, dpi = 300)
-
-
-
-
-########### CREATING A FOREST PLOT BASED ON CLINICAL VALUES OF TESTOSTERONE 
-########## AS OPPOSED TO THE QUARTILES IN THE DISTRIBUTION 
-
-
-print(clinical)
-
-
-names(clinical)[names(clinical) == "X"] <- "clinical_T"
-
-
-# Ensure clinical_T is a factor with the correct order of levels
-clinical$clinical_T <- factor(clinical$clinical_T, levels = c("very-low", "low", "standard", "high"))
-
-# Custom colors for clinical T categories in desired order
-clinical_colors <- c("very-low" = "#fc8d62", "low" = "#66c2a5", "standard" = "#8da0cb", "high" = "#e78ac3")
-
-# Create the forest plot with reordered levels
-plot <- ggplot(clinical, aes(x = clinical_T, y = exp_coef, ymin = exp_coef_lower_95, ymax = exp_coef_upper_95, color = clinical_T)) +
-  geom_point(position = position_dodge(width = 0.3), size = 3) +
-  geom_errorbar(position = position_dodge(width = 0.3), width = 0.2) +
-  labs(title = "Hazard Ratios of Incident CAD by Clinical Testosterone Levels",
-       x = "Clinical Testosterone Level",
-       y = "Hazard Ratio",
-       color = "Clinical Testosterone Level") +
-  scale_color_manual(values = clinical_colors) +  # Use custom colors with reordered levels
-  theme_minimal() +
-  theme(axis.text.y = element_text(size = 10)) +
-  geom_hline(yintercept = 1, linetype = "dashed", color = "black") +  # Add a line at HR = 1 (null effect)
-  theme(panel.grid.major.x = element_blank(),
-        panel.grid.minor.x = element_blank(),  # Remove horizontal gridlines for cleaner look
-        axis.text.x = element_text(angle = 45, hjust = 1)) 
-
-# Print the plot
-print(plot)
 
