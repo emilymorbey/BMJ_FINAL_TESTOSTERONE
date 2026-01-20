@@ -1,5 +1,6 @@
 
 
+
 ### THIS CODE PROVIDES THE MENDELIAN RANDOMISATION ANALYSIS OF TESTOSTERONE AND SHBG LEVELS TO CARDIOVASCULAR DISEASE RISK
 
 ### 1. Mendelian Randomisation of Testosterone to Cardiovascular Disease Risk in Men 
@@ -1443,10 +1444,6 @@ colnames(icd10_2) <- c("dnx_hesin_diag_id", "eid", "diag_icd10")
 # subsequent letters describe the more specific subtypes 
 
 
-patterns <- c("I21", "I210", "I211", "I212", "I213", "I214", "I219", "I21X",
-              "I22", "I220", "I221", "I228", "I229", "I23", "I23.1", "I23.2",
-              "I23.3", "I23.4", "I23.5", "I23.6", "I238", "I24", "I240",
-              "I241", "I248", "I249", "I252")
 
 
 # now we are filtering the long list of conditions which has a row 
