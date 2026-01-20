@@ -1537,12 +1537,7 @@ phenotypes_collapsed <- phenotypes %>%
 # if any CAD conditions were present in their ICD10 list 
 # and a 0 if there were not any 
 
-phenotypes_collapsed <- phenotypes_collapsed %>%
-  mutate(CAD_ICD10 = if_else(grepl("I21|I210|I211|I212|I213|
-                            I214|I219|I21X|I22|I220|I221|I228|I229|
-                            I23|I23.1|I23.2|I23.3|I23.4|I23.5|
-                            I23.6|I238|I24|I240|I241|I248|I249|
-                            I252", phenotypes_collapsed$diag_icd10), 1, 0))
+
 
 
 # now doing the same for ICD9 codes 
